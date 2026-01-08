@@ -1,0 +1,10 @@
+﻿# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+.env
+*.db
+*.sqlite3
+.DS_Store
