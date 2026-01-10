@@ -1,12 +1,16 @@
 # C:\PassGuardian\src\infrastructure\secrets_manager.py
 import sqlite3
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-import os
+import 
+ 
 
 class SecretsManager:
     def __init__(self, master_password):
         self.master_key = master_password.encode()
-        self.conn = sqlite3.connect("config/local.db")
+        #self.conn = sqlite3.connect("config/local.db")
+        from pathlib import Path
+        DB_PATH = Path(__file__).resolve().parent.parent.parent / "passguardian.db"
+        self.conn = sqlite3.connect(DB_PATH)
         self.create_table()
 
     def create_table(self):

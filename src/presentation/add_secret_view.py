@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QProgressBar
 from PySide6.QtCore import Qt
-from infrastructure.secrets_manager import SecretsManager
+#from infrastructure.secrets_manager import SecretsManager
+from src.infrastructure.secrets_manager import SecretsManager
 import re
 
 class AddSecretView(QWidget):
