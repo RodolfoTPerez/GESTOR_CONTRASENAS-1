@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 from src.main import start_app
 
 if __name__ == "__main__":

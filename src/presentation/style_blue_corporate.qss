@@ -1,0 +1,81 @@
+/* ===========================
+   TEMA AZUL CORPORATIVO
+   =========================== */
+
+QWidget {
+    background-color: #eef2f7;
+    color: #1a1a1a;
+    font-family: Segoe UI, Arial;
+    font-size: 13px;
+}
+
+/* Inputs */
+QLineEdit {
+    background: #ffffff;
+    border: 1px solid #b8c4d4;
+    border-radius: 6px;
+    padding: 6px;
+}
+QLineEdit:focus {
+    border: 1px solid #1f6feb;
+}
+
+/* Botones */
+QPushButton {
+    background-color: #1f6feb;
+    color: white;
+    border-radius: 6px;
+    padding: 6px 12px;
+}
+QPushButton:hover {
+    background-color: #1554b8;
+}
+QPushButton:pressed {
+    background-color: #0f3d87;
+}
+
+/* Botones en tabla */
+QTableWidget QPushButton {
+    background: transparent;
+    color: #1a1a1a;
+    border: none;
+    font-size: 16px;
+}
+QTableWidget QPushButton:hover {
+    color: #1f6feb;
+}
+
+/* Tabla */
+QTableWidget {
+    background: #ffffff;
+    alternate-background-color: #e8edf5;
+    gridline-color: #c3cedd;
+    border: 1px solid #b8c4d4;
+}
+QHeaderView::section {
+    background-color: #d9e2f0;
+    padding: 6px;
+    border: none;
+    font-weight: bold;
+    color: #1a1a1a;
+}
+
+/* Drawer */
+#drawer {
+    background-color: #ffffff;
+    border-left: 1px solid #b8c4d4;
+}
+
+/* Slider */
+QSlider::groove:horizontal {
+    background: #c3cedd;
+    height: 6px;
+    border-radius: 3px;
+}
+QSlider::handle:horizontal {
+    background: #1f6feb;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    margin: -4px 0;
+}
