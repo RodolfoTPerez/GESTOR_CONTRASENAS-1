@@ -1,0 +1,386 @@
+import os
+from PyQt5.QtCore import QObject
+import logging
+
+class ThemeManager(QObject):
+    """
+    Manages the application's visual themes.
+    Loads QSS files and applies them to widgets or the entire application.
+    """
+    
+    # Global state to sync widgets without passing settings everywhere
+    _GLOBAL_THEME = None
+    
+    # [CONFIG] Constante para QSettings
+    APP_ID = "VultraxCore"
+
+    # Predefined color palettes for themes
+    THEMES = {
+        "tactical_dark": {
+            "name": "Tactical Dark (Default)",
+            "bg": "#0a0f1d",
+            "bg_sec": "#161d31",
+            "primary": "#3b82f6",
+            "secondary": "#2dd4bf",
+            "accent": "#6366f1",
+            "text": "#f1f5f9",
+            "text_dim": "#94a3b8",
+            "danger": "#f43f5e",
+            "warning": "#f59e0b",
+            "success": "#10b981",
+            "border": "rgba(59, 130, 246, 0.15)",
+            "bg_dashboard_card": "#0f172a",
+            "info": "#3b82f6",
+            "ai": "#8b5cf6",
+            "ai_sec": "#a78bfa",
+            "text_on_primary": "#ffffff",
+            # Ghost mode colors for dark theme
+            "ghost_bg": "rgba(15, 23, 42, 0.1)",
+            "ghost_border": "rgba(59, 130, 246, 0.1)",
+            "ghost_bg_dark": "rgba(15, 23, 42, 0.4)",
+            "ghost_bg_light": "rgba(15, 23, 42, 0.05)",
+            "ghost_text_dim": "rgba(148, 163, 184, 0.2)",
+            "ghost_text_dim_45": "rgba(148, 163, 184, 0.45)",
+            "ghost_text_dim_85": "rgba(148, 163, 184, 0.85)",
+            "ghost_primary_10": "rgba(59, 130, 246, 0.1)",
+            "ghost_primary_15": "rgba(59, 130, 246, 0.15)",
+            "ghost_primary_20": "rgba(59, 130, 246, 0.2)",
+            "ghost_primary_30": "rgba(59, 130, 246, 0.3)",
+            "ghost_primary_40": "rgba(59, 130, 246, 0.4)",
+            "ghost_danger_10": "rgba(244, 63, 94, 0.1)",
+            "ghost_danger_15": "rgba(244, 63, 94, 0.15)",
+            "ghost_danger_20": "rgba(244, 63, 94, 0.2)",
+            "ghost_danger_30": "rgba(244, 63, 94, 0.3)",
+            "ghost_danger_40": "rgba(244, 63, 94, 0.4)",
+            "ghost_danger_85": "rgba(239, 68, 68, 0.85)",
+            "ghost_success_15": "rgba(16, 185, 129, 0.15)",
+            "ghost_success_20": "rgba(16, 185, 129, 0.2)",
+            "ghost_success_30": "rgba(16, 185, 129, 0.3)",
+            "ghost_success_40": "rgba(16, 185, 129, 0.4)",
+            "ghost_success_85": "rgba(16, 185, 129, 0.85)",
+            "ghost_warning_40": "rgba(245, 158, 11, 0.4)",
+            "ghost_warning_85": "rgba(245, 158, 11, 0.85)",
+            "ghost_ai_08": "rgba(139, 92, 246, 0.08)",
+            "ghost_ai_30": "rgba(139, 92, 246, 0.3)",
+            "ghost_ai_sec_08": "rgba(167, 139, 250, 0.08)",
+            "ghost_ai_sec_30": "rgba(167, 139, 250, 0.3)"
+        },
+        "industrial_ops": {
+            "name": "Industrial Ops",
+            "bg": "#09090b",
+            "bg_sec": "#18181b",
+            "primary": "#eab308",
+            "secondary": "#06b6d4",
+            "accent": "#d97706",
+            "text": "#fafafa",
+            "text_dim": "#71717a",
+            "danger": "#ef4444",
+            "warning": "#f97316",
+            "success": "#22c55e",
+            "border": "rgba(234, 179, 8, 0.12)",
+            "bg_dashboard_card": "#111111",
+            "info": "#eab308",
+            "ai": "#d97706",
+            "ai_sec": "#fbbf24",
+            "text_on_primary": "#000000",
+            # Ghost mode colors
+            "ghost_bg": "rgba(9, 9, 11, 0.1)",
+            "ghost_border": "rgba(234, 179, 8, 0.1)",
+            "ghost_bg_dark": "rgba(9, 9, 11, 0.4)",
+            "ghost_bg_light": "rgba(9, 9, 11, 0.05)",
+            "ghost_text_dim": "rgba(113, 113, 122, 0.2)",
+            "ghost_text_dim_45": "rgba(113, 113, 122, 0.45)",
+            "ghost_text_dim_85": "rgba(113, 113, 122, 0.85)",
+            "ghost_primary_10": "rgba(234, 179, 8, 0.1)",
+            "ghost_primary_15": "rgba(234, 179, 8, 0.15)",
+            "ghost_primary_20": "rgba(234, 179, 8, 0.2)",
+            "ghost_primary_30": "rgba(234, 179, 8, 0.3)",
+            "ghost_primary_40": "rgba(234, 179, 8, 0.4)",
+            "ghost_danger_10": "rgba(239, 68, 68, 0.1)",
+            "ghost_danger_15": "rgba(239, 68, 68, 0.15)",
+            "ghost_danger_20": "rgba(239, 68, 68, 0.2)",
+            "ghost_danger_30": "rgba(239, 68, 68, 0.3)",
+            "ghost_danger_40": "rgba(239, 68, 68, 0.4)",
+            "ghost_danger_85": "rgba(239, 68, 68, 0.85)",
+            "ghost_success_15": "rgba(34, 197, 94, 0.15)",
+            "ghost_success_20": "rgba(34, 197, 94, 0.2)",
+            "ghost_success_30": "rgba(34, 197, 94, 0.3)",
+            "ghost_success_40": "rgba(34, 197, 94, 0.4)",
+            "ghost_success_85": "rgba(34, 197, 94, 0.85)",
+            "ghost_warning_40": "rgba(249, 115, 22, 0.4)",
+            "ghost_warning_85": "rgba(249, 115, 22, 0.85)",
+            "ghost_ai_08": "rgba(217, 119, 6, 0.08)",
+            "ghost_ai_30": "rgba(217, 119, 6, 0.3)",
+            "ghost_ai_sec_08": "rgba(251, 191, 36, 0.08)",
+            "ghost_ai_sec_30": "rgba(251, 191, 36, 0.3)"
+        },
+        "cyber_arctic": {
+            "name": "Cyber Arctic (Light)",
+            "bg": "#ffffff",           # Snow White
+            "bg_sec": "#f1f5f9",       # Unified card background (light slate)
+            "primary": "#2563eb",      # Royal Blue
+            "secondary": "#0ea5e9",    # Sky Blue
+            "accent": "#4f46e5",       # Indigo
+            "text": "#0f172a",         # Deep Slate
+            "text_dim": "#64748b",     # Slate Dim
+            "danger": "#e11d48",       # Crimson
+            "warning": "#d97706",      # Goldenrod
+            "success": "#059669",      # Dark Emerald
+            "border": "rgba(37, 99, 235, 0.1)",
+            "bg_dashboard_card": "#f1f5f9",  # Same as bg_sec for consistency
+            "info": "#2563eb",
+            "ai": "#7c3aed",
+            "ai_sec": "#a855f7",
+            "text_on_primary": "#ffffff",
+            # Ghost mode colors for light theme
+            "ghost_bg": "rgba(248, 250, 252, 0.8)",
+            "ghost_border": "rgba(37, 99, 235, 0.15)",
+            "ghost_bg_dark": "rgba(241, 245, 249, 0.9)",
+            "ghost_bg_light": "rgba(255, 255, 255, 0.5)",
+            "ghost_text_dim": "rgba(100, 116, 139, 0.2)",
+            "ghost_text_dim_45": "rgba(100, 116, 139, 0.45)",
+            "ghost_text_dim_85": "rgba(100, 116, 139, 0.85)",
+            "ghost_primary_10": "rgba(37, 99, 235, 0.1)",
+            "ghost_primary_15": "rgba(37, 99, 235, 0.15)",
+            "ghost_primary_20": "rgba(37, 99, 235, 0.2)",
+            "ghost_primary_30": "rgba(37, 99, 235, 0.3)",
+            "ghost_primary_40": "rgba(37, 99, 235, 0.4)",
+            "ghost_danger_10": "rgba(225, 29, 72, 0.1)",
+            "ghost_danger_15": "rgba(225, 29, 72, 0.15)",
+            "ghost_danger_20": "rgba(225, 29, 72, 0.2)",
+            "ghost_danger_30": "rgba(225, 29, 72, 0.3)",
+            "ghost_danger_40": "rgba(225, 29, 72, 0.4)",
+            "ghost_danger_85": "rgba(225, 29, 72, 0.85)",
+            "ghost_success_15": "rgba(5, 150, 105, 0.15)",
+            "ghost_success_20": "rgba(5, 150, 105, 0.2)",
+            "ghost_success_30": "rgba(5, 150, 105, 0.3)",
+            "ghost_success_40": "rgba(5, 150, 105, 0.4)",
+            "ghost_success_85": "rgba(5, 150, 105, 0.85)",
+            "ghost_warning_40": "rgba(217, 119, 6, 0.4)",
+            "ghost_warning_85": "rgba(217, 119, 6, 0.85)",
+            "ghost_ai_08": "rgba(124, 58, 237, 0.08)",
+            "ghost_ai_30": "rgba(124, 58, 237, 0.3)",
+            "ghost_ai_sec_08": "rgba(168, 85, 247, 0.08)",
+            "ghost_ai_sec_30": "rgba(168, 85, 247, 0.3)"
+        },
+        "neon_overdrive": {
+            "name": "Neon Overdrive (Spectacular)",
+            "bg": "#050505",
+            "bg_sec": "#121212",
+            "primary": "#f43f5e",
+            "secondary": "#fb7185",
+            "accent": "#d946ef",
+            "text": "#ffffff",
+            "text_dim": "#71717a",
+            "danger": "#ff0000",
+            "warning": "#fbbf24",
+            "success": "#22c55e",
+            "border": "rgba(244, 63, 94, 0.2)",
+            "bg_dashboard_card": "#0a0a0a",
+            "info": "#fb7185",
+            "ai": "#d946ef",
+            "ai_sec": "#f43f5e",
+            "text_on_primary": "#ffffff",
+            # Ghost mode colors
+            "ghost_bg": "rgba(5, 5, 5, 0.1)",
+            "ghost_border": "rgba(244, 63, 94, 0.15)",
+            "ghost_bg_dark": "rgba(5, 5, 5, 0.4)",
+            "ghost_bg_light": "rgba(5, 5, 5, 0.05)",
+            "ghost_text_dim": "rgba(113, 113, 122, 0.2)",
+            "ghost_text_dim_45": "rgba(113, 113, 122, 0.45)",
+            "ghost_text_dim_85": "rgba(113, 113, 122, 0.85)",
+            "ghost_primary_10": "rgba(244, 63, 94, 0.1)",
+            "ghost_primary_15": "rgba(244, 63, 94, 0.15)",
+            "ghost_primary_20": "rgba(244, 63, 94, 0.2)",
+            "ghost_primary_30": "rgba(244, 63, 94, 0.3)",
+            "ghost_primary_40": "rgba(244, 63, 94, 0.4)",
+            "ghost_danger_10": "rgba(255, 0, 0, 0.1)",
+            "ghost_danger_15": "rgba(255, 0, 0, 0.15)",
+            "ghost_danger_20": "rgba(255, 0, 0, 0.2)",
+            "ghost_danger_30": "rgba(255, 0, 0, 0.3)",
+            "ghost_danger_40": "rgba(255, 0, 0, 0.4)",
+            "ghost_danger_85": "rgba(239, 68, 68, 0.85)",
+            "ghost_success_15": "rgba(34, 197, 94, 0.15)",
+            "ghost_success_20": "rgba(34, 197, 94, 0.2)",
+            "ghost_success_30": "rgba(34, 197, 94, 0.3)",
+            "ghost_success_40": "rgba(34, 197, 94, 0.4)",
+            "ghost_success_85": "rgba(34, 197, 94, 0.85)",
+            "ghost_warning_40": "rgba(251, 191, 36, 0.4)",
+            "ghost_warning_85": "rgba(251, 191, 36, 0.85)",
+            "ghost_ai_08": "rgba(217, 70, 239, 0.08)",
+            "ghost_ai_30": "rgba(217, 70, 239, 0.3)",
+            "ghost_ai_sec_08": "rgba(244, 63, 94, 0.08)",
+            "ghost_ai_sec_30": "rgba(244, 63, 94, 0.3)"
+        },
+        "saas_commercial": {
+            "name": "SaaS Commercial (Final)",
+            "bg": "#020617",
+            "bg_sec": "#071226",
+            "primary": "#3b82f6",
+            "secondary": "#00ffa3",
+            "accent": "#6366f1",
+            "text": "#e6edf3",
+            "text_dim": "#94a3b8",
+            "danger": "#ef4444",
+            "warning": "#f59e0b",
+            "success": "#00ffa3",
+            "border": "rgba(255, 255, 255, 0.06)",
+            "bg_dashboard_card": "#0b1730",
+            "info": "#3b82f6",
+            "ai": "#8b5cf6",
+            "ai_sec": "#a78bfa",
+            "text_on_primary": "#ffffff",
+            # Ghost mode colors
+            "ghost_bg": "rgba(2, 6, 23, 0.1)",
+            "ghost_border": "rgba(59, 130, 246, 0.1)",
+            "ghost_bg_dark": "rgba(2, 6, 23, 0.4)",
+            "ghost_bg_light": "rgba(2, 6, 23, 0.05)",
+            "ghost_text_dim": "rgba(148, 163, 184, 0.2)",
+            "ghost_text_dim_45": "rgba(148, 163, 184, 0.45)",
+            "ghost_text_dim_85": "rgba(148, 163, 184, 0.85)",
+            "ghost_primary_10": "rgba(59, 130, 246, 0.1)",
+            "ghost_primary_15": "rgba(59, 130, 246, 0.15)",
+            "ghost_primary_20": "rgba(59, 130, 246, 0.2)",
+            "ghost_primary_30": "rgba(59, 130, 246, 0.3)",
+            "ghost_primary_40": "rgba(59, 130, 246, 0.4)",
+            "ghost_danger_10": "rgba(239, 68, 68, 0.1)",
+            "ghost_danger_15": "rgba(239, 68, 68, 0.15)",
+            "ghost_danger_20": "rgba(239, 68, 68, 0.2)",
+            "ghost_danger_30": "rgba(239, 68, 68, 0.3)",
+            "ghost_danger_40": "rgba(239, 68, 68, 0.4)",
+            "ghost_danger_85": "rgba(239, 68, 68, 0.85)",
+            "ghost_success_15": "rgba(0, 255, 163, 0.15)",
+            "ghost_success_20": "rgba(0, 255, 163, 0.2)",
+            "ghost_success_30": "rgba(0, 255, 163, 0.3)",
+            "ghost_success_40": "rgba(0, 255, 163, 0.4)",
+            "ghost_success_85": "rgba(0, 255, 163, 0.85)",
+            "ghost_warning_40": "rgba(245, 158, 11, 0.4)",
+            "ghost_warning_85": "rgba(245, 158, 11, 0.85)",
+            "ghost_ai_08": "rgba(139, 92, 246, 0.08)",
+            "ghost_ai_30": "rgba(139, 92, 246, 0.3)",
+            "ghost_ai_sec_08": "rgba(167, 139, 250, 0.08)",
+            "ghost_ai_sec_30": "rgba(167, 139, 250, 0.3)"
+        }
+    }
+
+    def __init__(self, parent_app=None):
+        super().__init__()
+        self.logger = logging.getLogger(__name__)
+        self.app = parent_app
+        
+        # Load active theme from settings FIRST if global not set
+        if not ThemeManager._GLOBAL_THEME:
+            from PyQt5.QtCore import QSettings
+            settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+            ThemeManager._GLOBAL_THEME = settings.value("theme_active", "saas_commercial")
+            
+        self.current_theme = ThemeManager._GLOBAL_THEME
+
+    def get_theme_colors(self, theme_id=None):
+        # Always prefer global unless specifically requested
+        tid = theme_id or ThemeManager._GLOBAL_THEME or self.current_theme
+        return self.THEMES.get(tid)
+
+    _applying_theme = False
+
+    def apply_app_theme(self, app):
+        """Applies both base and dashboard styles to the entire application and forces a refresh."""
+        if ThemeManager._applying_theme:
+            return
+        
+        ThemeManager._applying_theme = True
+        try:
+            base_qss = self.load_stylesheet("base")
+            dash_qss = self.load_stylesheet("dashboard")
+            dialog_qss = self.load_stylesheet("dialogs")
+            full_qss = base_qss + "\n" + dash_qss + "\n" + dialog_qss
+            
+            app.setStyleSheet(full_qss)
+            
+            # Force re-polishing of all top-level widgets to ensure immediate visual update
+            from PyQt5.QtWidgets import QWidget
+            from PyQt5.QtCore import QEvent
+            
+            # [RECURSION FIX] Usar un set para evitar procesar el mismo widget y bloquear señales temporalmente
+            processed = set()
+            for widget in app.allWidgets():
+                if not isinstance(widget, QWidget) or widget in processed:
+                    continue
+                
+                try:
+                    # Bloquear señales para evitar cascadas de eventos durante el repulido
+                    signals_blocked = widget.blockSignals(True)
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
+                    widget.blockSignals(signals_blocked)
+                    widget.update()
+                    processed.add(widget)
+                except:
+                    pass
+        finally:
+            ThemeManager._applying_theme = False
+
+    # [OPTIMIZATION] Cache de hojas de estilo procesadas para evitar lag en I/O
+    _STYLESHEET_CACHE = {}
+
+    def load_stylesheet(self, component_name, theme_id=None):
+        """Loads a QSS file and replaces variables with theme colors (Cached)."""
+        theme_id = theme_id or self.current_theme
+        
+        # [OPTIMIZATION] Check cache first
+        cache_key = (component_name, theme_id)
+        if cache_key in ThemeManager._STYLESHEET_CACHE:
+            return ThemeManager._STYLESHEET_CACHE[cache_key]
+            
+        colors = self.get_theme_colors(theme_id)
+        
+        # Determine path to the style file
+        base_dir = os.path.dirname(__file__)
+        file_path = os.path.join(base_dir, "styles", f"{component_name}.qss")
+        
+        if not os.path.exists(file_path):
+            return ""
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            # Replace variables (Sort by length descending to match longest variables first, e.g., @text_dim before @text)
+            sorted_keys = sorted(colors.keys(), key=len, reverse=True)
+            
+            # --- GHOST COLOR INJECTION ---
+            ghost_colors = {}
+            for k in ["primary", "success", "warning", "danger", "accent", "info", "ai"]:
+                if k in colors:
+                    val = colors[k]
+                    if val.startswith("#"):
+                        # Hex to RGBA conversion
+                        h = val.lstrip('#')
+                        r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                        # Adaptive Alpha: Red/Yellow (Danger/Warning) needs more punch (0.25)
+                        # whereas others look better at 0.12 for the 'ghost' effect.
+                        alpha = 0.25 if k in ["danger", "warning"] else 0.12
+                        ghost_colors[f"ghost_{k}"] = f"rgba({r}, {g}, {b}, {alpha})"
+            
+            colors.update(ghost_colors)
+            sorted_keys = sorted(colors.keys(), key=len, reverse=True)
+
+            for key in sorted_keys:
+                val = colors[key]
+                content = content.replace(f"@{key}", val)
+            
+            # [OPTIMIZATION] Store in cache
+            ThemeManager._STYLESHEET_CACHE[cache_key] = content
+            return content
+        except Exception as e:
+            self.logger.error(f"Could not load stylesheet {component_name}: {e}")
+            return ""
+
+    def set_theme(self, theme_id):
+        if theme_id in self.THEMES:
+            self.current_theme = theme_id
+            ThemeManager._GLOBAL_THEME = theme_id
+            # Note: This doesn't auto-update already visible widgets. 
+            # In a full implementation, you'd trigger an update event.
+            return True
+        return False

@@ -1,0 +1,40 @@
+{
+    "expo": {
+        "name": "PassGuardian",
+        "slug": "passguardian-mobile",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "dark",
+        "splash": {
+            "backgroundColor": "#0f172a",
+            "resizeMode": "contain"
+        },
+        "assetBundlePatterns": [
+            "**/*"
+        ],
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.passguardian.mobile",
+            "infoPlist": {
+                "NSFaceIDUsageDescription": "PassGuardian uses Face ID to secure your vault access."
+            }
+        },
+        "android": {
+            "package": "com.passguardian.mobile",
+            "permissions": [
+                "USE_BIOMETRIC",
+                "USE_FINGERPRINT"
+            ],
+            "adaptiveIcon": {
+                "backgroundColor": "#0f172a"
+            }
+        },
+        "web": {
+            "bundler": "metro"
+        },
+        "plugins": [
+            "expo-secure-store",
+            "expo-local-authentication"
+        ]
+    }
+}

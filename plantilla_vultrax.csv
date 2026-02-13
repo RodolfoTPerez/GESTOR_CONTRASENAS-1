@@ -1,0 +1,3 @@
+service,username,password,notes,is_private
+EjemploServicio,usuario@ejemplo.com,PasswordSegura123,Nota opcional,0
+BóvedaPersonal,mi_alias,ClaveSecreta789,Solo accesible para mí,1

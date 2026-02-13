@@ -1,0 +1,119 @@
+/* === BASE GENERAL === */
+QWidget {
+    background-color: #f3f0f8;
+    color: #2a2333;
+    font-family: "Segoe UI", "SF Pro Display", sans-serif;
+    font-size: 13px;
+}
+
+/* === INPUTS === */
+QLineEdit, QTextEdit {
+    background-color: #ffffff;
+    color: #2a2333;
+    border: 1px solid #cfc4e3;
+    border-radius: 5px;
+    padding: 5px;
+}
+QLineEdit:focus, QTextEdit:focus {
+    border: 1px solid #a99ac9;
+}
+
+/* === TABLA === */
+QTableWidget {
+    background-color: #ffffff;
+    alternate-background-color: #e8e2f2;
+    color: #2a2333;
+    border: 1px solid #cfc4e3;
+    gridline-color: #dcd2ec;
+    border-radius: 4px;
+}
+QTableWidget::item {
+    padding: 6px;
+}
+QTableWidget::item:selected {
+    background-color: #cfc4e3;
+    color: #000000;
+}
+
+/* === ENCABEZADOS === */
+QHeaderView::section {
+    background-color: #e2d9f0;
+    color: #2a2333;
+    padding: 6px;
+    font-weight: 600;
+    border: none;
+    border-bottom: 1px solid #cfc4e3;
+}
+
+/* === BOTONES === */
+QPushButton {
+    background-color: #dcd2ec;
+    color: #2a2333;
+    border-radius: 6px;
+    padding: 6px 12px;
+    border: 1px solid #bfb3d6;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #cfc4e3;
+}
+QPushButton:pressed {
+    background-color: #bfb3d6;
+}
+
+/* === BOTÓN LOGOUT === */
+QPushButton#logout_button {
+    background-color: #e6b3b3;
+    border: 1px solid #cc8f8f;
+    color: #7a1f1f;
+}
+QPushButton#logout_button:hover {
+    background-color: #d9a3a3;
+}
+
+/* === BOTONES DE EMOJI === */
+QTableWidget QPushButton {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    min-width: 20px;
+}
+QTableWidget QPushButton:hover {
+    background-color: transparent;
+}
+
+/* === STATUS BAR === */
+QFrame#statusbar {
+    background-color: #ffffff;
+    border: 1px solid #cfc4e3;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+/* === DRAWER === */
+QWidget#drawer {
+    background-color: #f3f0f8;
+    border-left: 1px solid #cfc4e3;
+}
+
+/* === SLIDER === */
+QSlider::handle:horizontal {
+    background: #a99ac9;
+    border: 1px solid #8c7bb0;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+
+/* === CHECKBOX / RADIO === */
+QCheckBox, QRadioButton {
+    spacing: 8px;
+    color: #2a2333;
+}
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+}
+

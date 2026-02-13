@@ -1,0 +1,160 @@
+/* --- GLOBAL V2: PREMIUM ACCESSIBILITY & COHERENCE --- */
+QApplication, #main_window, DashboardView, .LoginView {
+    background-color: @bg; 
+    color: @text; 
+    font-family: @font-family-main;
+    outline: none;
+}
+
+QWidget {
+    background-color: transparent; /* Default to transparent for better layering */
+}
+
+/* --- DIALOGS (QMessageBox, QInputDialog, QDialog) --- */
+QMessageBox, QInputDialog, QDialog {
+    background-color: @bg;
+    border: @border-width-main solid @border;
+}
+QMessageBox QLabel { 
+    color: @text; 
+    font-size: 14px; 
+    line-height: 1.5;
+}
+
+/* All labels transparent by default */
+QLabel {
+    background-color: transparent;
+}
+
+/* Global Buttons - Modern Ghost/Solid Hybrid */
+QPushButton {
+    background-color: transparent;
+    color: @text;
+    border: @border-width-main solid @border;
+    padding: 10px 20px;
+    border-radius: @border-radius-main;
+    font-weight: 600;
+    font-size: 13px;
+}
+QPushButton:hover {
+    background-color: @primary;
+    color: white;
+    border-color: @primary;
+}
+QPushButton:pressed {
+    background-color: @bg;
+    border-color: @accent;
+}
+QPushButton:disabled {
+    opacity: 0.5;
+    background-color: @bg;
+    color: @text_dim;
+}
+
+/* Global Inputs - Minimalist & Focus-Driven */
+QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QComboBox {
+    background-color: @bg_sec;
+    border: @border-width-main solid @border;
+    color: @text;
+    padding: 10px 14px;
+    border-radius: @border-radius-main;
+    selection-background-color: @primary;
+    selection-color: white;
+}
+QLineEdit:focus, QComboBox:focus, QTextEdit:focus {
+    border: @border-width-main solid @primary;
+    background-color: @bg;
+}
+
+/* Dropdown list styling for QComboBox (Advanced High-Fidelity) */
+QComboBox {
+    padding-right: 30px; /* Space for the arrow */
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 30px;
+    border-left: none;
+}
+
+QComboBox::down-arrow {
+    image: none; /* We use a custom dot or arrow if we have an image, for now just use a simple state */
+    border-top: 5px solid @text_dim;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    margin-right: 10px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: @bg_sec;
+    color: @text;
+    selection-background-color: @primary;
+    selection-color: white;
+    border: @border-width-main solid @primary;
+    border-radius: @border-radius-main;
+    outline: none;
+    padding: 5px;
+}
+
+QComboBox QListView::item {
+    padding: 8px 12px;
+    border-radius: @border-radius-main;
+    color: @text;
+}
+
+QComboBox QListView::item:selected {
+    background-color: @primary;
+    color: white;
+}
+
+QComboBox QListView::item:hover {
+    background-color: @border;
+    color: @primary;
+}
+
+/* Scrollbars - Stealth & Smooth */
+QScrollBar:vertical {
+    background: transparent;
+    width: 6px;
+    margin: 0px;
+}
+QScrollBar::handle:vertical {
+    background: @text_dim;
+    min-height: 30px;
+    border-radius: 3px;
+    opacity: 0.3;
+}
+QScrollBar::handle:vertical:hover {
+    background: @primary;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+/* Table Headers - High Visibility Industrial */
+QHeaderView::section {
+    background: @bg_sec;
+    border: none;
+    border-bottom: 2px solid @border;
+    color: @text_dim;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    padding: 10px;
+}
+QHeaderView::section:hover {
+    background: @bg;
+    color: @primary;
+}
+
+/* Global Tooltips - Tactical & Concise */
+QToolTip {
+    background-color: @bg_sec;
+    color: @text;
+    border: @border-width-main solid @primary;
+    border-radius: @border-radius-main;
+    padding: 6px;
+    font-weight: 500;
+}

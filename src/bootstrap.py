@@ -1,9 +1,6 @@
-import getpass, keyring, uuid
-from src.infrastructure.crypto.argon2_kdf import derive_key, generate_salt
-from src.infrastructure.storage.sqlcipher_adapter import SQLCipherAdapter
-from pathlib import Path
+from src.infrastructure.config.path_manager import PathManager
 
-DB_PATH = Path(r"C:\PassGuardian\passguardian-secure.db")
+DB_PATH = PathManager.DATA_DIR / "passguardian-secure.db"
 
 def unlock_vault() -> tuple[SQLCipherAdapter, bytes]:
     master = getpass.getpass("Master password: ")
@@ -13,6 +10,10 @@ def unlock_vault() -> tuple[SQLCipherAdapter, bytes]:
     db.init_schema()
     return db, key
 
+def bootstrap_vault():
+    logging.basicConfig(level=logging.INFO)
+    db, key = unlock()
+    logger.info(f"Vault unlocked successfully. Key length: {len(key)} bytes")
+
 if __name__ == "__main__":
-    db, key = unlock_vault()
-    print("Vault unlocked. Key length:", len(key))
+    bootstrap_vault()

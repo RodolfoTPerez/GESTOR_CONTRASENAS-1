@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "passguardian.db"
+DB_PATH = Path(__file__).parent.parent / "vultrax.db"
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)

@@ -1,0 +1,18 @@
+from supabase import create_client
+import os
+import sys
+
+# Importar configuración
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from config.config import SUPABASE_URL, SUPABASE_KEY
+
+def check_supabase_users():
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    try:
+        res = supabase.table("users").select("username, role, active").execute()
+        print(f"Users found in Supabase: {res.data}")
+    except Exception as e:
+        print(f"Error checking Supabase: {e}")
+
+if __name__ == "__main__":
+    check_supabase_users()

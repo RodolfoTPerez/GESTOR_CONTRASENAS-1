@@ -3,6 +3,9 @@ import getpass
 from pathlib import Path
 from src.infrastructure.crypto.argon2_kdf import derive_key, generate_salt
 from src.infrastructure.storage.sqlcipher_adapter import SQLCipherAdapter
+import logging
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(r"C:\PassGuardian\passguardian-secure.db")
 
@@ -16,5 +19,6 @@ def unlock() -> tuple[SQLCipherAdapter, bytes]:
 
 # Si se ejecuta directamente corre la utilidad
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     db, key = unlock()
-    print("Vault unlocked. Key length:", len(key))
+    logger.info(f"Vault unlocked successfully. Key length: {len(key)} bytes")

@@ -1,0 +1,285 @@
+import sys
+import math
+import random
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal
+from PyQt5.QtGui import QPainter, QColor, QPen, QRadialGradient, QBrush, QPainterPath, QFont, QPolygonF, QLinearGradient, QConicalGradient
+
+class HyperRealVaultCore(QWidget):
+    """
+    RÉPLICA INTEGRADA: Suelo de Bóveda Hiperrealista + Esfera de Neón Intensa.
+    Pantalla de Bloqueo de Seguridad para PassGuardian.
+    """
+    unlocked = pyqtSignal() # Señal para capturar el regreso al login
+
+    def __init__(self, vault_name="PASSGUARDIAN"):
+        super().__init__()
+        self.setWindowTitle("PASSGUARDIAN - SECURITY LOCK")
+        
+        # [MODIFICADO] Ventana Flotante de Seguridad (No Kiosco)
+        # Tamaño estándar de la app para bloquear solo el acceso visual a la misma
+        self.resize(1000, 650)
+        self._center_on_screen()
+        
+        self.setStyleSheet("background-color: #00020A;")
+        # Quitamos WindowStaysOnTopHint para permitir Alt+Tab
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
+        
+        self.vault_name = str(vault_name).upper()
+        self._angle_x = 0
+        self._angle_y = 0
+        self._angle_step = 0.008
+        self._pulse_time = 0
+        
+        # Puntos de la esfera
+        self.sphere_points = []
+        self._generate_sphere_points()
+        
+        # Intentar cargar nombre real de la boveda (Sincronización Cloud)
+        self._fetch_real_vault_name()
+        
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._animate)
+        self.timer.setInterval(20)
+        self.timer.start()
+
+    def _center_on_screen(self):
+        from PyQt5.QtWidgets import QDesktopWidget
+        screen = QDesktopWidget().screenGeometry(QDesktopWidget().cursor().pos())
+        size = self.geometry()
+        x = (screen.width() - size.width()) // 2 + screen.left()
+        y = (screen.height() - size.height()) // 2 + screen.top()
+        self.move(x, y)
+
+    def _fetch_real_vault_name(self):
+        """
+        Obtiene el nombre oficial desde la tabla 'vaults' (Supabase) 
+        o desde el cache local (meta) si no hay conexión.
+        """
+        try:
+            from src.infrastructure.user_manager import UserManager
+            from src.infrastructure.secrets_manager import SecretsManager
+            
+            sm = SecretsManager()
+            
+            # --- 1. FALLBACK INICIAL: Cache Local ---
+            # Siempre cargamos primero el cache por si falla el internet
+            cached_name = sm.get_meta("instance_name")
+            if cached_name:
+                self.vault_name = cached_name.upper()
+                print(f">>> [LockScreen] Nombre recuperado de Cache Local: {self.vault_name}")
+
+            # --- 2. FUENTE PRIMARIA: Supabase (Tabla Vaults) ---
+            # Intentamos sincronizar con la nube para tener el nombre más reciente
+            um = UserManager(sm)
+            # Consultamos directamente la tabla 'vaults'
+            # En PassGuardian, el nombre de la bóveda es único por instancia/empresa
+            try:
+                res = um.supabase.table("vaults").select("name").execute()
+                if res.data and len(res.data) > 0:
+                    official_name = res.data[0].get("name")
+                    if official_name:
+                        self.vault_name = official_name.upper()
+                        # Actualizamos el cache para uso offline futuro
+                        sm.set_meta("instance_name", official_name)
+                        print(f">>> [LockScreen] Nombre sincronizado desde tabla 'vaults': {self.vault_name}")
+            except Exception as e:
+                print(f">>> [LockScreen] Sin conexión a Supabase, usando cache local: {e}")
+                
+        except Exception as e:
+            print(f">>> [LockScreen Info] Error accediendo a fuentes de datos: {e}")
+
+    def _generate_sphere_points(self):
+        """Genera puntos para la red esférica densa"""
+        num_lat = 16
+        num_long = 24
+        radius = 160
+        for i in range(num_lat + 1):
+            lat = math.pi * i / num_lat
+            for j in range(num_long):
+                lon = 2 * math.pi * j / num_long
+                x = radius * math.sin(lat) * math.cos(lon)
+                y = radius * math.sin(lat) * math.sin(lon)
+                z = radius * math.cos(lat)
+                self.sphere_points.append([x, y, z])
+
+    def _animate(self):
+        self._angle_y += self._angle_step
+        self._angle_x += self._angle_step * 0.3
+        self._pulse_time += 0.02
+        self.update()
+
+    def _draw_hyper_floor(self, painter, cx, cy, pulse):
+        """Dibuja el suelo de bóveda con pulso sincronizado"""
+        
+        # [RESPONSIVE REFINADO]
+        base_dim = min(self.width(), self.height())
+        scale = (base_dim / 850.0) * 0.8
+        
+        # 1. Resplandor base pulsante
+        # Mover un poco la base hacia arriba respecto al centro (cy + 220 * scale)
+        floor_y = cy + (200 * scale) 
+        
+        base_glow = QRadialGradient(cx, floor_y, 600 * scale)
+        base_alpha = int(30 + 50 * pulse)
+        base_glow.setColorAt(0, QColor(0, 100, 255, base_alpha))
+        base_glow.setColorAt(1, Qt.transparent)
+        painter.setBrush(base_glow)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(QPointF(cx, floor_y - 200 * scale), 600 * scale, 300 * scale)
+
+        # 2. Capas de la bóveda pulsantes (12 anillos)
+        layers = [
+            [550, 1.0, QColor(0, 100, 255, 80), 0.1, Qt.SolidLine, False],
+            [520, 1.5, QColor(0, 150, 255, 120), 0.2, Qt.SolidLine, True],
+            [500, 1.0, QColor(0, 80, 255, 90), -0.2, Qt.DotLine, False],
+            [480, 6.0, QColor(0, 80, 255, 150), -0.4, Qt.SolidLine, False],
+            [450, 1.0, QColor(59, 130, 246, 110), 0.3, Qt.DashLine, False],
+            [420, 2.0, QColor(59, 130, 246, 210), 0.6, Qt.DashLine, True],
+            [390, 1.0, QColor(0, 255, 255, 120), -0.3, Qt.SolidLine, False],
+            [350, 4.0, QColor(0, 255, 255, 255), 0.3, Qt.SolidLine, False],
+            [320, 1.0, QColor(0, 180, 255, 110), 0.15, Qt.DotLine, False],
+            [280, 1.5, QColor(0, 100, 255, 160), -0.1, Qt.DotLine, False],
+            [240, 1.0, QColor(0, 200, 255, 140), 0.5, Qt.DashLine, False],
+            [200, 8.0, QColor(0, 255, 255, 255), 0.8, Qt.CustomDashLine, False],
+        ]
+
+        for r_base, w, col, speed, style, ticks in layers:
+            r = r_base * scale # Escalar radio
+            rect = QRectF(cx - r, floor_y - r/4, r * 2, r/2)
+            rot = self._angle_y * 100 * speed
+            
+            pulse_mult = 0.6 + 0.4 * pulse
+            curr_alpha = int(col.alpha() * pulse_mult)
+            curr_col = QColor(col.red(), col.green(), col.blue(), curr_alpha)
+
+            pen = QPen(curr_col, w * scale) # Escalar grosor
+            if style == Qt.CustomDashLine: pen.setDashPattern([2, 5])
+            else: pen.setStyle(style)
+            painter.setPen(pen)
+            painter.drawEllipse(rect)
+            
+            if ticks:
+                painter.setPen(QPen(QColor(col.red(), col.green(), col.blue(), curr_alpha), 1))
+                for t in range(72):
+                    angle = t * (360/72) + (rot * 0.5)
+                    if (angle % 360) < 180:
+                        painter.drawArc(rect, int(angle * 16), 16)
+            
+            # Escaneo Radial Cristalino
+            scan_grad = QConicalGradient(cx, floor_y, rot * 2)
+            scan_grad.setColorAt(0, Qt.transparent)
+            scan_grad.setColorAt(0.1, QColor(255, 255, 255, int(220 * pulse)))
+            scan_grad.setColorAt(0.2, Qt.transparent)
+            painter.setPen(QPen(scan_grad, w + 1))
+            painter.drawEllipse(rect)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # [AJUSTE VISUAL] Centro desplazado ligeramente hacia arriba para dejar espacio al texto
+        cx, cy = self.width() / 2, (self.height() / 2) - 40 
+        
+        # [RESPONSIVE REFINADO] 
+        # Reducimos la escala base un 20% para que NO toque los bordes (0.8)
+        # Usamos la dimensión más pequeña para asegurar que quepa entera
+        base_dim = min(self.width(), self.height())
+        scale = (base_dim / 850.0) * 0.8
+        
+        pulse_val = abs(math.sin(self._pulse_time))
+        pulse_smooth = (math.sin(self._pulse_time) + 1) / 2
+        
+        # --- TÍTULO SUPERIOR ---
+        title_font = QFont("Segoe UI", int(24 * scale), QFont.Bold)
+        title_font.setLetterSpacing(QFont.AbsoluteSpacing, 10 * scale)
+        painter.setFont(title_font)
+        painter.setPen(QColor(0, 255, 255, int(180 + 75 * pulse_val)))
+        
+        vault_title = f"{self.vault_name} VAULT" if "VAULT" not in self.vault_name else self.vault_name
+        painter.drawText(QRectF(0, 30 * scale, self.width(), 50 * scale), Qt.AlignCenter, vault_title)
+
+        # --- 1. SUELO HIPERREALISTA ---
+        self._draw_hyper_floor(painter, cx, cy, pulse_smooth)
+        
+        # --- 2. DIBUJAR ESFERA DE NEÓN ---
+        # Escalar el radio de la proyección
+        base_scale = (0.9 + (0.3 * pulse_val)) * scale
+        
+        projected_points = []
+        for p in self.sphere_points:
+            sx, sy, sz = p[0] * base_scale, p[1] * base_scale, p[2] * base_scale
+            x = sx * math.cos(self._angle_y) - sz * math.sin(self._angle_y)
+            z = sx * math.sin(self._angle_y) + sz * math.cos(self._angle_y)
+            y = sy
+            ry = y * math.cos(self._angle_x) - z * math.sin(self._angle_x)
+            rz = y * math.sin(self._angle_x) + z * math.cos(self._angle_x)
+            
+            # Perspectiva
+            f_dist = 450 * scale 
+            factor = f_dist / (f_dist - rz) if (f_dist - rz) != 0 else 1
+            px, py = x * factor + cx, ry * factor + cy
+            projected_points.append((px, py, rz))
+
+        num_long = 24
+        pen = QPen()
+        for i in range(len(projected_points)):
+            p1 = projected_points[i]
+            p2 = projected_points[(i + 1) % len(projected_points)]
+            p3_idx = i + num_long
+            p3 = projected_points[p3_idx] if p3_idx < len(projected_points) else None
+            
+            alpha = int((130 + (p1[2]/160) * 100) * (0.5 + 0.5 * pulse_val))
+            pen.setColor(QColor(0, 120, 255, max(30, alpha)))
+            pen.setWidthF((0.8 + 1.2 * pulse_val) * scale) 
+            painter.setPen(pen)
+            
+            max_dist = 70 * base_scale
+            
+            d12 = math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+            if d12 < max_dist: painter.drawLine(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1]))
+            if p3:
+                d13 = math.sqrt((p1[0]-p3[0])**2 + (p1[1]-p3[1])**2)
+                if d13 < max_dist: painter.drawLine(int(p1[0]), int(p1[1]), int(p3[0]), int(p3[1]))
+
+        # Nodos brillantes
+        painter.setPen(Qt.NoPen)
+        for p in projected_points:
+            if p[2] > 0: 
+                p_alpha = int(255 * (p[2]/160) * pulse_val)
+                painter.setBrush(QColor(0, 255, 255, max(0, p_alpha)))
+                size = (1.8 + 2.8 * pulse_val) * scale
+                painter.drawEllipse(QPointF(p[0], p[1]), size, size)
+
+        # --- INSTRUCCIÓN INFERIOR ---
+        # Posicionada relativa al fondo, con margen seguro
+        instr_font = QFont("Segoe UI", int(11 * scale))
+        instr_font.setLetterSpacing(QFont.AbsoluteSpacing, 3 * scale)
+        painter.setFont(instr_font)
+        painter.setPen(QColor(0, 255, 255, int(100 + 100 * pulse_val)))
+        
+        # Dibujar en el 10% inferior de la pantalla aseguro que no se solape
+        bottom_area = QRectF(0, self.height() * 0.90, self.width(), self.height() * 0.10)
+        painter.drawText(bottom_area, Qt.AlignCenter, "PRESS [ ENTER ] TO UNLOCK SYSTEM")
+
+    def keyPressEvent(self, event):
+        """Captura la tecla ENTER para simular el retorno al login"""
+        # Aceptamos Enter, Return o Espacio para desbloquear
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Space):
+            print(">>> [Security] Sistema desbloqueado. Volviendo a Login...")
+            self.unlocked.emit()
+            self.close()
+
+    def mouseReleaseEvent(self, event):
+        """Permite desbloquear con un click del mouse (al soltar)"""
+        if event.button() == Qt.LeftButton:
+            print(">>> [Security] Sistema desbloqueado por Mouse. Volviendo a Login...")
+            self.unlocked.emit()
+            self.close()
+            event.accept()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = HyperRealVaultCore()
+    window.show()
+    sys.exit(app.exec_())

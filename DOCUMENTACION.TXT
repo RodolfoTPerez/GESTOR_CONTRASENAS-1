@@ -1,0 +1,611 @@
+Versión final completa, estructurada como especificación técnica de un Design System, aplicable directamente a tu dashboard, incluyendo todas las tarjetas que aparecen en tu imagen, la barra de widgets, y compatibilidad total con temas mediante tokens. Esto ya es el documento final para rehacer todo.
+
+Arquitectura general del dashboard
+Zonas principales
+Header superior
+
+Barra de widgets de estado
+
+Fila crítica (tarjetas de seguridad)
+
+Fila operativa (tarjetas funcionales)
+
+Fila informativa (actividad y amenazas)
+
+Sidebar (navegación)
+
+Footer de accesos rápidos
+
+Tokens globales (obligatorios para todos los temas)
+Fondos
+--color-bg-primary
+
+--color-bg-secondary
+
+--color-bg-tertiary
+
+Texto
+--color-text-primary
+
+--color-text-secondary
+
+Estados
+--color-danger
+
+--color-warning
+
+--color-success
+
+Acentos y bordes
+--color-accent
+
+--color-border
+
+Header superior
+Contenido
+Indicador de cifrado
+
+Buscador
+
+Botón “Agregar nuevo registro”
+
+Sesiones activas
+
+Logs
+
+Hora
+
+Estilo
+Fondo: var(--color-bg-primary)
+
+Texto: var(--color-text-primary)
+
+Iconos: var(--color-text-secondary)
+
+Barra de widgets de estado (persistente)
+Widgets incluidos
+Estado de Internet
+
+Estado de base de datos en la nube
+
+Estado de base de datos local
+
+Estado de sincronización
+
+Temporizador de bloqueo
+
+Control de intensidad de color
+
+Sesiones activas
+
+Estilo
+Fondo: var(--color-bg-tertiary)
+
+Texto: var(--color-text-secondary)
+
+Iconos: var(--color-text-secondary)
+
+Estados:
+
+Online → var(--color-success)
+
+Offline → var(--color-danger)
+
+Sync → var(--color-warning)
+
+Separación entre widgets: 16–20 px
+
+Padding vertical: 8–10 px
+
+Fila crítica (altura 1.5×)
+Tarjeta: Estado Global de Seguridad (8 columnas)
+Contenido
+Protección (Vulnerable / Seguro)
+
+System Health
+
+Auth Integrity
+
+Encryption Tier
+
+Storage Load
+
+Risk Exposure
+
+Audit Protocol
+
+Estilo
+Fondo: var(--color-bg-primary)
+
+Borde según severidad
+
+Título: 18 px
+
+Métrica principal: 34 px
+
+Submétricas: 16 px
+
+Icono: 20–24 px
+
+Tarjeta: AI Guardian Alerts (4 columnas)
+Contenido
+Vulnerabilidades críticas
+
+Patrones anómalos
+
+Botones: Aplicar / Revisar / Ignorar
+
+Estilo
+Fondo: var(--color-bg-secondary)
+
+Alertas coloreadas por severidad
+
+Botones con tokens
+
+Padding: 24 px
+
+Fila operativa (4 tarjetas iguales)
+Tarjeta: System Health
+Score
+
+Estado general
+
+Carga del sistema
+
+Tarjeta: Auth Security
+MFA
+
+Admin Security
+
+Active Sessions
+
+Security Policy
+
+Login Attempts
+
+Last Incident
+
+Tarjeta: Password Health
+Score
+
+Weak / Strong / Reused / Expired
+
+Botón “Fix Issues”
+
+Tarjeta: Security Watch
+Strength
+
+Auth
+
+Sync
+
+Health
+
+Rotation
+
+High-risk vaults
+
+Secrets never rotated
+
+System State
+
+SQLite Load
+
+Estilo común
+Fondo: var(--color-bg-secondary)
+
+Borde: var(--color-border)
+
+Título: 18 px
+
+Métrica principal: 28–32 px
+
+Submétricas: 14–16 px
+
+Icono: 18–20 px
+
+Padding: 20–24 px
+
+Fila informativa
+Tarjeta: Recent Activity (7 columnas)
+Lista de eventos
+
+Timestamps
+
+Iconos mínimos
+
+Fondo: var(--color-bg-secondary)
+
+Texto: var(--color-text-secondary)
+
+Separadores: var(--color-border)
+
+Tarjeta: Threats Monitoring (5 columnas)
+Active Monitoring
+
+Categorías: Strength, Auth, Records, Health, Sync, Rotation, Intel
+
+Gráfico simple
+
+Fondo: var(--color-bg-secondary)
+
+Gráficos con var(--color-accent)
+
+Sidebar (navegación)
+Dashboard
+
+Vault
+
+AI Guardian
+
+Activity Log
+
+Admin Panel
+
+Settings
+
+Usuario
+
+Estilo
+Fondo: var(--color-bg-primary)
+
+Texto: var(--color-text-primary)
+
+Iconos: var(--color-text-secondary)
+
+Footer de accesos rápidos
+Usuarios
+
+Auditoría
+
+Monitor
+
+Integridad
+
+Sincronizar
+
+Servicios
+
+Estilo
+Fondo: var(--color-bg-primary)
+
+Texto: var(--color-text-secondary)
+
+Grid definitivo
+12 columnas
+
+Gutter: 24 px
+
+Padding externo: 32 px
+
+Distribución:
+
+Barra de widgets → ancho completo
+
+Fila crítica → 8 + 4
+
+Fila operativa → 3 + 3 + 3 + 3
+
+Fila informativa → 7 + 5
+
+Tipografía final
+Títulos: 18–20 px
+
+Métricas: 28–34 px
+
+Submétricas: 14–16 px
+
+Auxiliar: 12–13 px
+
+Interlineado: 1.35
+
+Reglas universales
+Todas las tarjetas mantienen su título como en tu dashboard actual
+
+Los colores dependen 100% del tema mediante tokens
+
+Ningún color fijo está permitido
+
+Los widgets viven en su propia barra, nunca dentro de tarjetas
+
+La jerarquía visual está completamente definida
+
+Las métricas críticas siempre arriba
+
+Las operativas al centro
+
+Las informativas abajo
+
+Gráficos simples, máximo 3 colores
+
+
+🧩 Componentes base del sistema
+Tarjeta base (componente padre)
+Fondo: var(--color-bg-secondary)
+
+Borde: 1px solid var(--color-border)
+
+Radio: 8 px
+
+Padding interno: 20–24 px
+
+Título: 18 px semibold, var(--color-text-primary)
+
+Subtítulo / descripción: 14–16 px, var(--color-text-secondary)
+
+Métrica principal: 28–34 px bold, var(--color-text-primary)
+
+Icono: 18–20 px, var(--color-text-secondary)
+
+Espaciado vertical entre elementos: 12–16 px
+
+Variantes:
+
+default
+
+critical (borde usa var(--color-danger))
+
+warning (borde usa var(--color-warning))
+
+success (borde usa var(--color-success))
+
+🟥 Componente: Estado Global de Seguridad (8 columnas)
+Propiedades
+protectionStatus: vulnerable | secure
+
+systemHealthScore: number
+
+authIntegrity: %
+
+encryptionTier: string
+
+storageLoad: string
+
+riskExposure: low | medium | high
+
+auditProtocol: ok | fail
+
+Variantes
+critical si protectionStatus = vulnerable
+
+warning si riskExposure = medium
+
+success si protectionStatus = secure
+
+Estados visuales
+Métrica principal (Protección):
+
+vulnerable → var(--color-danger)
+
+secure → var(--color-success)
+
+🤖 Componente: AI Guardian Alerts (4 columnas)
+Propiedades
+alerts: array
+
+Cada alerta incluye:
+
+severity: critical | warning
+
+message: string
+
+timestamp: string
+
+Variantes
+critical si existe alguna alerta critical
+
+warning si solo hay alertas warning
+
+Acciones
+Botón primario: fondo var(--color-accent)
+
+Botón secundario: fondo var(--color-bg-tertiary)
+
+Texto botones: var(--color-text-primary)
+
+⚙️ Componente: System Health
+Propiedades
+score: number
+
+status: string
+
+load: string
+
+Variantes
+default
+
+warning si score < 60
+
+critical si score < 40
+
+🔐 Componente: Auth Security
+Propiedades
+mfaCoverage: string
+
+adminSecurity: secure | insecure
+
+activeSessions: number
+
+securityPolicy: string
+
+loginAttempts: number
+
+lastIncident: ok | fail
+
+Variantes
+critical si adminSecurity = insecure
+
+warning si loginAttempts > 0
+
+🔑 Componente: Password Health
+Propiedades
+score: number
+
+weak: number
+
+strong: number
+
+reused: number
+
+expired: number
+
+Variantes
+critical si weak > 10
+
+warning si reused > 0
+
+Acciones
+Botón “Fix Issues” → var(--color-accent)
+
+🛰️ Componente: Security Watch
+Propiedades
+strength: level
+
+auth: level
+
+sync: level
+
+health: level
+
+rotation: level
+
+highRiskVaults: number
+
+unusedVaults: number
+
+neverRotated: number
+
+systemState: string
+
+sqliteLoad: string
+
+Variantes
+critical si health = red
+
+warning si rotation = yellow
+
+📜 Componente: Recent Activity (7 columnas)
+Propiedades
+events: array
+
+Cada evento incluye:
+
+user: string
+
+action: string
+
+timestamp: string
+
+Estilo
+Lista con separadores var(--color-border)
+
+Texto: var(--color-text-secondary)
+
+⚠️ Componente: Threats Monitoring (5 columnas)
+Propiedades
+activeRisks: number
+
+categories: array
+
+graphData: array
+
+Estilo
+Gráfico simple
+
+Líneas/barras: var(--color-accent)
+
+Estados especiales:
+
+critical → var(--color-danger)
+
+warning → var(--color-warning)
+
+🧭 Componente: Barra de Widgets de Estado (persistente)
+Widgets incluidos
+Internet
+
+Base de datos en la nube
+
+Base de datos local
+
+Sincronización
+
+Temporizador de bloqueo
+
+Control de intensidad de color
+
+Sesiones activas
+
+Propiedades por widget
+status: online | offline | syncing
+
+label: string
+
+icon: string
+
+value: string
+
+Variantes
+success → var(--color-success)
+
+danger → var(--color-danger)
+
+warning → var(--color-warning)
+
+Estilo
+Fondo: var(--color-bg-tertiary)
+
+Texto: var(--color-text-secondary)
+
+Iconos: var(--color-text-secondary)
+
+Separación: 16–20 px
+
+Padding vertical: 8–10 px
+
+📐 Grid final
+12 columnas
+
+Gutter: 24 px
+
+Padding externo: 32 px
+
+Distribución:
+
+Barra de widgets → ancho completo
+
+Fila crítica → 8 + 4
+
+Fila operativa → 3 + 3 + 3 + 3
+
+Fila informativa → 7 + 5
+
+🔠 Tipografía final
+Títulos: 18–20 px
+
+Métricas: 28–34 px
+
+Submétricas: 14–16 px
+
+Auxiliar: 12–13 px
+
+Interlineado: 1.35
+
+Reglas finales del sistema
+Todas las tarjetas conservan su título original
+
+Todos los colores dependen del tema mediante tokens
+
+Ningún color fijo está permitido
+
+Los widgets viven en su propia barra
+
+La jerarquía visual está completamente definida
+
+Las métricas críticas siempre arriba
+
+Las operativas al centro
+
+Las informativas abajo
+
+

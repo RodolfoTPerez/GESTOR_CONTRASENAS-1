@@ -6,6 +6,9 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import pyotp
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ===============================
 # CONFIGURACIÓN Y CONSTANTES
@@ -113,28 +116,29 @@ def verify_totp(secret: str, token: str) -> bool:
 # EJEMPLOS DE USO
 # ===============================
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     # Derivar clave maestra
     password = "MiClaveMaestra123!"
     key, salt = derive_master_key(password)
-    print(f"Clave maestra derivada: {base64.b64encode(key).decode()}")
-    print(f"Salt usado: {base64.b64encode(salt).decode()}")
+    logger.info(f"Derived master key: {base64.b64encode(key).decode()}")
+    logger.info(f"Salt used: {base64.b64encode(salt).decode()}")
 
     # Cifrar y descifrar
     secret_text = "contraseña_super_secreta"
     ciphertext, nonce = encrypt_secret(key, secret_text)
-    print(f"Ciphertext: {base64.b64encode(ciphertext).decode()}")
-    print(f"Nonce: {base64.b64encode(nonce).decode()}")
+    logger.info(f"Ciphertext: {base64.b64encode(ciphertext).decode()}")
+    logger.info(f"Nonce: {base64.b64encode(nonce).decode()}")
 
     decrypted = decrypt_secret(key, ciphertext, nonce)
-    print(f"Descifrado: {decrypted}")
+    logger.info(f"Decrypted: {decrypted}")
 
     # Evaluar contraseña
     score, category = password_strength(secret_text)
-    print(f"Fuerza: {score}% ({category})")
+    logger.info(f"Strength: {score}% ({category})")
 
     # TOTP
     totp_secret = generate_totp_secret()
-    print(f"Secreto TOTP: {totp_secret}")
-    print(f"Token actual: {get_totp_token(totp_secret)}")
-    print(f"Verificación: {verify_totp(totp_secret, get_totp_token(totp_secret))}")
+    logger.info(f"TOTP Secret: {totp_secret}")
+    logger.info(f"Current Token: {get_totp_token(totp_secret)}")
+    logger.info(f"Verification: {verify_totp(totp_secret, get_totp_token(totp_secret))}")
 

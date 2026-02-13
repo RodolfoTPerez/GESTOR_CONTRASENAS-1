@@ -1,0 +1,877 @@
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QLabel, QFrame, QComboBox, 
+    QPushButton, QLineEdit, QTableWidget, QWidget, QSlider, 
+    QCheckBox, QRadioButton, QButtonGroup, QScrollArea, QGridLayout, 
+    QLayout, QStackedWidget, QGraphicsDropShadowEffect, QHeaderView,
+    QProgressBar
+)
+from PyQt5.QtCore import Qt, QPropertyAnimation, QEasingCurve, QDateTime, QTimer, QSize
+from PyQt5.QtGui import QPixmap, QIcon, QFont, QColor, QLinearGradient
+from src.domain.messages import MESSAGES
+from src.presentation.theme_manager import ThemeManager
+from src.presentation.widgets.glass_card import GlassCard
+from src.presentation.widgets.circular_gauge import CircularGauge
+from src.presentation.widgets.identity_banner import VaultIdentityBanner
+from src.presentation.widgets.radar_status import RadarStatusWidget
+from src.presentation.widgets.database_status import CloudDatabaseWidget, LocalDatabaseWidget
+from src.presentation.widgets.time_status import TimeSyncWidget
+from src.presentation.widgets.encryption_status import EncryptionStatusWidget
+from src.presentation.widgets.status_badge import StatusBadgeWidget
+from src.presentation.widgets.threat_radar import ThreatRadarWidget
+from src.presentation.widgets.tactical_pulse_bars import TacticalPulseBars
+
+class TacticalMetricUnit(QWidget):
+    def __init__(self, title, show_bar=True, parent=None):
+        super().__init__(parent)
+        self.show_bar = show_bar
+        self.setMinimumHeight(45) # Professional vertical room
+        l = QVBoxLayout(self); l.setContentsMargins(0, 5, 0, 5); l.setSpacing(6)
+        
+        info = QHBoxLayout(); info.setSpacing(10); info.setContentsMargins(0, 4, 0, 4)
+        self.lbl_title = QLabel(title.upper()); self.lbl_title.setObjectName("tactical_metric_title")
+        self.lbl_value = QLabel("--"); self.lbl_value.setObjectName("tactical_metric_value")
+        
+        info.addWidget(self.lbl_title); info.addStretch(); info.addWidget(self.lbl_value)
+        l.addLayout(info)
+        
+        self.bar_container = QFrame(); self.bar_container.setFixedHeight(4)
+        self.bar_container.setStyleSheet("background: rgba(30, 41, 59, 0.4); border-radius: 2px;")
+        self.bar_layout = QHBoxLayout(self.bar_container); self.bar_layout.setContentsMargins(0,0,0,0); self.bar_layout.setSpacing(0)
+        self.bar_fill = QFrame(); self.bar_fill.setFixedHeight(4)
+        self.bar_fill.setStyleSheet("background: #3b82f6; border-radius: 2px;")
+        self.bar_spacer = QWidget()
+        self.bar_layout.addWidget(self.bar_fill, 0)
+        self.bar_layout.addWidget(self.bar_spacer, 100)
+        l.addWidget(self.bar_container)
+        
+        if not self.show_bar:
+            self.bar_container.setStyleSheet("background: transparent;")
+            self.bar_fill.hide()
+
+    def set_value(self, text, percent=None, color=None):
+        self.lbl_value.setText(text)
+        if color:
+            self.lbl_value.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: 900; font-family: 'Consolas';")
+        
+        if self.show_bar and percent is not None:
+            p = max(2, min(100, int(percent)))
+            self.bar_layout.setStretch(0, p)
+            self.bar_layout.setStretch(1, 100 - p)
+            if color:
+                self.bar_fill.setStyleSheet(f"background: {color}; border-radius: 2px;")
+
+class DashboardUI:
+    def _build_ui(self):
+        # El estilo se aplica a nivel de QApplication en DashboardView
+        pass
+        
+
+        main_layout = QHBoxLayout(self); main_layout.setContentsMargins(0, 0, 0, 0); main_layout.setSpacing(0)
+
+        # ================= SIDEBAR =================
+        self.sidebar = QFrame(); self.sidebar.setObjectName("sidebar"); self.sidebar.setFixedWidth(250)
+        sidebar_layout = QVBoxLayout(self.sidebar); sidebar_layout.setContentsMargins(0, 35, 0, 35)
+        
+        lbl_logo = QLabel("🛡️ PASSGUARDIAN"); lbl_logo.setAlignment(Qt.AlignCenter); lbl_logo.setObjectName("sidebar_logo")
+        sidebar_layout.addWidget(lbl_logo)
+        
+        self.nav_group = QButtonGroup(self); self.nav_group.setExclusive(True)
+        def add_nav(lbl, ic, idx):
+            btn = QPushButton(f"  {ic}   {lbl}"); btn.setObjectName("nav_btn"); btn.setCheckable(True)
+            btn.setFixedHeight(44)
+            def on_nav():
+                self.main_stack.setCurrentIndex(idx)
+                if idx == 5: # Settings Page
+                    self._load_generator_settings()
+                    self._load_ui_settings()
+            btn.clicked.connect(on_nav)
+            self.nav_group.addButton(btn); sidebar_layout.addWidget(btn); return btn
+
+        self.btn_nav_dashboard = add_nav("Dashboard", "📊", 0)
+        self.btn_nav_vault = add_nav("Vault", "🔐", 1)
+        self.btn_nav_ai_side = add_nav("AI Guardian", "🧠", 2)
+        self.btn_nav_activity = add_nav("Activity Log", "📜", 3)
+        self.btn_nav_users = add_nav("Admin Panel", "👥", 4)
+        sidebar_layout.addStretch()
+        self.btn_nav_settings = add_nav("Settings", "⚙️", 5)
+        
+        u_card = QFrame(); u_layout = QHBoxLayout(u_card); u_layout.setContentsMargins(15, 0, 15, 0)
+        self.lbl_user_info = QLabel(f"👤 {self.current_username}"); self.lbl_user_info.setObjectName("lbl_user_info")
+        self.btn_logout = QPushButton("🚪"); self.btn_logout.setFixedSize(30, 30); self.btn_logout.setObjectName("btn_logout")
+        self.btn_logout.clicked.connect(self.logout)
+        u_layout.addWidget(self.lbl_user_info); u_layout.addStretch(); u_layout.addWidget(self.btn_logout)
+        sidebar_layout.addWidget(u_card)
+        main_layout.addWidget(self.sidebar)
+
+        # ================= MAIN CONTENT =================
+        content_box = QWidget(); content_layout = QVBoxLayout(content_box); content_layout.setContentsMargins(0,0,0,0); content_layout.setSpacing(0)
+        
+        # TOPBAR
+        self.topbar = QFrame(); self.topbar.setObjectName("topbar"); self.topbar.setFixedHeight(75)
+        top_l = QHBoxLayout(self.topbar); top_l.setContentsMargins(35, 0, 35, 0); top_l.setSpacing(12)
+        
+        # 1. SECURITY STATUS (Left side priority)
+        self.status_encryption = EncryptionStatusWidget()
+        self.status_encryption.setToolTip("Estado de Cifrado: AES-256 GCM activo (Capa de Seguridad Estática)")
+        top_l.addWidget(self.status_encryption)
+        
+        top_l.addStretch()
+        
+        self.search_input = QLineEdit(); self.search_input.hide() 
+        
+        # INFRASTRUCTURE STATUS WIDGETS (Observed Intel Cluster)
+        self.status_internet = RadarStatusWidget()
+        self.status_supabase = CloudDatabaseWidget()
+        self.status_sqlite = LocalDatabaseWidget()
+        self.status_sync_badge = StatusBadgeWidget("🔄")
+        self.status_audit_badge = StatusBadgeWidget("🛡️")
+        self.lbl_countdown = TimeSyncWidget()
+        
+        # Tooltips Grouped
+        self.status_internet.setToolTip("Network Connectivity Radar")
+        self.status_supabase.setToolTip("Cloud Endpoint Status")
+        self.status_sqlite.setToolTip("Local Partition Integrity")
+        
+        # 2. SESSION PROTECTION LAYER (Visual entropy bar)
+        self.session_bar = QProgressBar()
+        self.session_bar.setFixedSize(120, 6)
+        self.session_bar.setTextVisible(False)
+        self.session_bar.setObjectName("session_protection_bar")
+        self.session_bar.setStyleSheet("""
+            QProgressBar#session_protection_bar {
+                background: rgba(30, 41, 59, 0.5);
+                border: 1px solid #334155;
+                border-radius: 3px;
+            }
+            QProgressBar#session_protection_bar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #34d399);
+                border-radius: 2px;
+            }
+        """)
+        self.session_bar.setToolTip("Protocolo Ghost Lock: Integridad de la Capa de Sesión")
+        
+        # Add Cluster to Layout
+        top_l.addWidget(self.session_bar)
+        top_l.addWidget(self.status_internet)
+        top_l.addWidget(self.status_supabase)
+        top_l.addWidget(self.status_sqlite)
+        top_l.addWidget(self.status_sync_badge)
+        top_l.addWidget(self.status_audit_badge)
+        top_l.addWidget(self.lbl_countdown)
+        
+        # [UI CLEANUP] Action buttons removed from topbar to keep it for widgets only.
+        
+        content_layout.addWidget(self.topbar)
+
+        # STACK
+        self.main_stack = QStackedWidget()
+        self.view_dashboard = self._module_dashboard() 
+        self.view_vault = self._module_vault()         
+        self.view_ai = self._module_ai()
+        self.view_activity = self._module_activity()
+        self.view_users = self._module_admin()
+        self.view_settings = self._module_settings()   
+        
+        for v in [self.view_dashboard, self.view_vault, self.view_ai, self.view_activity, self.view_users, self.view_settings]: self.main_stack.addWidget(v)
+        content_layout.addWidget(self.main_stack); main_layout.addWidget(content_box)
+        
+        self.btn_nav_dashboard.setChecked(True); self.main_stack.setCurrentIndex(0)
+        self.status_sync = QLabel(); self.status_datetime = QLabel()
+
+    def _module_dashboard(self):
+        page = QWidget()
+        scroll = QScrollArea(page); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame); scroll.setObjectName("dashboard_scroll")
+        container = QWidget()
+        layout = QVBoxLayout(container); layout.setContentsMargins(35, 10, 35, 15); layout.setSpacing(10)
+ 
+        # --- IDENTITY BANNER ---
+        v_name = "PASSGUARDIAN"
+        if hasattr(self, 'sm') and self.sm: v_name = self.sm.get_meta("instance_name") or "PASSGUARDIAN"
+        self.identity_banner = VaultIdentityBanner(v_name, show_badge=False)
+        layout.addWidget(self.identity_banner)
+
+        # --- GLOBAL SECURITY WARNING (Enterprise Standard) ---
+        self.global_security_banner = GlassCard()
+        self.global_security_banner.setObjectName("global_security_banner")
+        self.global_security_banner.setFixedHeight(60)
+        self.global_security_banner.hide() # Hidden by default
+        
+        banner_inner = QHBoxLayout(self.global_security_banner)
+        banner_inner.setContentsMargins(20, 0, 20, 0)
+        
+        self.lbl_banner_msg = QLabel("⚠️ CRITICAL SECURITY GAP: ADMINISTRATOR WITHOUT MFA DETECTED")
+        self.lbl_banner_msg.setObjectName("global_warning_label")
+        
+        banner_inner.addWidget(self.lbl_banner_msg, alignment=Qt.AlignCenter)
+        layout.addWidget(self.global_security_banner)
+
+        # --- COMMAND CENTER ---
+        cmd_card = GlassCard(); cmd_card.setFixedHeight(54); cmd_card.setObjectName("command_center_card")
+        cmd_l = QHBoxLayout(cmd_card); cmd_l.setContentsMargins(25, 0, 25, 0)
+        
+        lbl_cmd = QLabel("COMMAND CENTER"); lbl_cmd.setObjectName("dashboard_card_title")
+        cmd_l.addWidget(lbl_cmd)
+        
+        cmd_l.addStretch()
+        
+        # --- GLOBAL QUICK SEARCH ---
+        self.dash_search = QLineEdit()
+        self.dash_search.setPlaceholderText("🔍  QUICK VAULT SEARCH...")
+        self.dash_search.setFixedWidth(280)
+        self.dash_search.setFixedHeight(40)
+        self.dash_search.setObjectName("dash_search_input")
+        self.dash_search.setStyleSheet("""
+            QLineEdit#dash_search_input {
+                background: rgba(15, 23, 42, 0.4);
+                color: #e2e8f0;
+                border: 1px solid #334155;
+                border-radius: 10px;
+                padding: 0 15px;
+                font-family: 'Consolas';
+                font-size: 14px;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+            }
+            QLineEdit#dash_search_input:focus {
+                border-color: #3b82f6;
+                background: rgba(15, 23, 42, 0.6);
+            }
+        """)
+        cmd_l.addWidget(self.dash_search)
+        cmd_l.addSpacing(15)
+        
+        self.btn_add_dash = QPushButton("➕  ADD NEW RECORD"); self.btn_add_dash.setObjectName("btn_add_fancy")
+        self.btn_add_dash.setCursor(Qt.PointingHandCursor)
+        self.btn_add_dash.setFixedSize(200, 36)
+        self.btn_add_dash.setStyleSheet("""
+            QPushButton#btn_add_fancy {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3b82f6, stop:1 #1d4ed8);
+                color: white; font-family: 'Consolas'; font-weight: 800; font-size: 11px;
+                border: none; border-radius: 8px; letter-spacing: 1px;
+            }
+            QPushButton#btn_add_fancy:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #60a5fa, stop:1 #2563eb);
+            }
+        """)
+        cmd_l.addWidget(self.btn_add_dash)
+        layout.addWidget(cmd_card)
+        
+        # --- BENTO GRID (MODULAR CARDS) ---
+        grid = QGridLayout(); grid.setSpacing(20)
+        # Forzar 4 columnas iguales para el Row 1
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(2, 1)
+        grid.setColumnStretch(3, 1)
+        
+        # 1. SYSTEM OVERVIEW (Alineación Absoluta)
+        health_card = GlassCard(); health_card.setFixedHeight(280); health_card.setProperty("depth", "dashboard")
+        h_main_layout = QVBoxLayout(health_card); h_main_layout.setContentsMargins(25, 25, 25, 25); h_main_layout.setSpacing(15); h_main_layout.setAlignment(Qt.AlignTop)
+        
+        # Header Estándar
+        lbl_h = QLabel("SYSTEM OVERVIEW"); lbl_h.setObjectName("dashboard_card_title")
+        h_main_layout.addWidget(lbl_h, alignment=Qt.AlignCenter)
+        h_main_layout.addSpacing(10)
+
+        # Split Layout (Left: Gauge | Right: Metrics)
+        split_layout = QHBoxLayout(); split_layout.setSpacing(20)
+        
+        # Left Side: The Gauge
+        self.gauge = CircularGauge(); self.gauge.setFixedSize(130, 130)
+        split_layout.addWidget(self.gauge, alignment=Qt.AlignCenter)
+
+        # Right Side: Tactical Detail
+        metrics_container = QFrame(); metrics_container.setObjectName("tactical_metrics_box")
+        ml = QVBoxLayout(metrics_container); ml.setContentsMargins(15, 12, 15, 12); ml.setSpacing(10)
+        
+        def mk_met(txt):
+            l = QLabel(txt.upper()); l.setObjectName("tactical_metric_label")
+            l.setAlignment(Qt.AlignLeft); return l
+        
+        self.unit_health = TacticalMetricUnit("SYSTEM HEALTH")
+        self.unit_integrity = TacticalMetricUnit("AUTH INTEGRITY")
+        self.unit_risk = TacticalMetricUnit("RISK EXPOSURE", show_bar=False)
+        self.unit_protocol = TacticalMetricUnit("AUDIT PROTOCOL", show_bar=False)
+        
+        # Referencias de compatibilidad (opcional, pero mejor usar los nombres nuevos)
+        self.lbl_hygiene = self.unit_health
+        self.lbl_mfa = self.unit_integrity
+        self.lbl_risk = self.unit_risk
+        self.lbl_audit = self.unit_protocol
+        
+        for u in [self.unit_health, self.unit_integrity, self.unit_risk, self.unit_protocol]: ml.addWidget(u)
+        split_layout.addWidget(metrics_container, 1)
+        # Main layout sequence
+        h_main_layout.addLayout(split_layout)
+        h_main_layout.addSpacing(15)
+
+        # Bottom Protection Bar
+        dist_container = QWidget()
+        dist_l = QVBoxLayout(dist_container); dist_l.setContentsMargins(0, 0, 0, 0); dist_l.setSpacing(6)
+        dist_head = QLabel("PROTECTION STATUS"); dist_head.setObjectName("dashboard_card_title")
+        dist_head.setAlignment(Qt.AlignLeft) 
+        dist_l.addWidget(dist_head)
+        
+        self.bar_strength = QFrame(); self.bar_strength.setFixedHeight(10); self.bar_strength.setObjectName("bar_strength_bg")
+        self.bar_strength_fill = QFrame(self.bar_strength); self.bar_strength_fill.setFixedHeight(10); self.bar_strength_fill.setObjectName("bar_strength_fill")
+        dist_l.addWidget(self.bar_strength)
+        h_main_layout.addWidget(dist_container)
+        h_main_layout.addStretch()
+        
+        # Referencias
+        self.lbl_protection_status = dist_head
+        grid.addWidget(health_card, 1, 0, 1, 1)
+
+        # 1b. AUTH SECURITY (Alineación Absoluta)
+        self.card_auth = GlassCard(); self.card_auth.setFixedHeight(280); self.card_auth.setProperty("depth", "dashboard")
+        auth_l = QVBoxLayout(self.card_auth); auth_l.setContentsMargins(25, 25, 25, 25); auth_l.setSpacing(15); auth_l.setAlignment(Qt.AlignTop)
+        
+        auth_h = QLabel("AUTH SECURITY"); auth_h.setObjectName("dashboard_card_title")
+        auth_l.addWidget(auth_h, alignment=Qt.AlignCenter)
+        auth_l.addSpacing(15)
+        auth_l.addStretch()
+
+        auth_grid = QVBoxLayout(); auth_grid.setSpacing(5); auth_grid.setAlignment(Qt.AlignCenter)
+        def mk_auth_lbl(txt):
+            l = QLabel(txt); l.setObjectName("tactical_metric_label")
+            return l
+        
+        self.unit_auth_mfa = TacticalMetricUnit("MFA COVERAGE")
+        self.unit_auth_admin = TacticalMetricUnit("ADMIN SECURITY", show_bar=False)
+        self.unit_auth_fails = TacticalMetricUnit("LOGIN ATTEMPTS")
+        self.unit_auth_last = TacticalMetricUnit("LAST INCIDENT", show_bar=False)
+        
+        # Referencias de compatibilidad
+        self.lbl_auth_mfa = self.unit_auth_mfa
+        self.lbl_auth_admin_risk = self.unit_auth_admin
+        self.lbl_auth_fails = self.unit_auth_fails
+        self.lbl_auth_last_fail = self.unit_auth_last
+
+        auth_grid.addWidget(self.unit_auth_mfa)
+        auth_grid.addWidget(self.unit_auth_admin)
+        auth_grid.addWidget(self.unit_auth_fails)
+        auth_grid.addWidget(self.unit_auth_last)
+        auth_l.addLayout(auth_grid)
+        auth_l.addStretch()
+        
+        # Admin Alert Badge (Pulsante)
+        self.badge_admin_alert = QLabel("🔴 CRITICAL: ADMIN UNSECURED"); self.badge_admin_alert.setVisible(False)
+        self.badge_admin_alert.setStyleSheet("color: #ef4444; font-weight: 900; font-size: 10px; padding: 4px; border: 1px solid #ef4444; border-radius: 4px;")
+        auth_l.addWidget(self.badge_admin_alert, alignment=Qt.AlignCenter)
+        
+        grid.addWidget(self.card_auth, 1, 1, 1, 1)
+        
+        # 2. INFO TILES (Professional Metrics)
+        def mk_info_tile(title, icon, color):
+            c = GlassCard(); c.setFixedHeight(95); c.setProperty("depth", "dashboard")
+            cl = QVBoxLayout(c); cl.setContentsMargins(15,12,15,12); cl.setAlignment(Qt.AlignCenter)
+            
+            tl = QHBoxLayout(); tl.setAlignment(Qt.AlignCenter)
+            ic = QLabel(icon); ic.setStyleSheet(f"font-size: 20px;")
+            tit = QLabel(title); tit.setObjectName("info_tile_title")
+            tl.addWidget(ic); tl.addWidget(tit); cl.addLayout(tl)
+            
+            val = QLabel("0"); val.setObjectName("info_tile_value"); val.setProperty("tile_type", title.split()[-1].lower()) # Use property for specific colors
+            val.setAlignment(Qt.AlignCenter)
+            cl.addWidget(val); return c, val
+
+        if self.current_role == "admin":
+            # ADMIN INFO TILES (Global System Metrics)
+            self.card_admin, self.stat_admin_val = mk_info_tile("ADMIN SECRETS", "🏢", "#3b82f6")
+            self.card_others, self.stat_others_val = mk_info_tile("USERS SECRETS", "👥", "#0ea5e9")
+            self.card_users, self.stat_users_val = mk_info_tile("TOTAL USERS", "👤", "#06b6d4")
+            self.card_sessions, self.stat_sessions_val = mk_info_tile("SESSIONS", "⚡", "#8b5cf6")
+            self.card_logs, self.stat_logs_val = mk_info_tile("LOGS", "📜", "#f59e0b")
+            
+            tiles_layout = QHBoxLayout(); tiles_layout.setSpacing(15)
+            tiles_layout.addWidget(self.card_admin)
+            tiles_layout.addWidget(self.card_others)
+            tiles_layout.addWidget(self.card_users)
+            tiles_layout.addWidget(self.card_sessions)
+            tiles_layout.addWidget(self.card_logs)
+        else:
+            # USER INFO TILES (Personal Metrics)
+            self.card_total, self.stat_total_val = mk_info_tile("TOTAL CREDENTIALS", "🔑", "#3b82f6")
+            self.card_weak, self.stat_weak_val = mk_info_tile("VULNERABILITIES", "⚠️", "#ef4444")
+            self.card_age, self.stat_age_val = mk_info_tile("AVG AGE (DAYS)", "📅", "#f59e0b")
+
+            tiles_layout = QHBoxLayout(); tiles_layout.setSpacing(25)
+            tiles_layout.addWidget(self.card_total); tiles_layout.addWidget(self.card_weak); tiles_layout.addWidget(self.card_age)
+        
+        # Las mini-cards superiores ahora ocupan todo el ancho (4 columnas ahora)
+        grid.addLayout(tiles_layout, 0, 0, 1, 4)
+
+        # 3. PASSWORD HEALTH (Alineación Absoluta)
+        self.card_health = GlassCard(); self.card_health.setFixedHeight(280); self.card_health.setProperty("depth", "dashboard")
+        ph_l = QVBoxLayout(self.card_health); ph_l.setContentsMargins(25, 25, 25, 25); ph_l.setSpacing(15); ph_l.setAlignment(Qt.AlignTop)
+        
+        ph_h = QLabel("PASSWORD HEALTH"); ph_h.setObjectName("dashboard_card_title")
+        ph_l.addWidget(ph_h, alignment=Qt.AlignCenter)
+        ph_l.addSpacing(15)
+        ph_l.addStretch()
+
+        health_grid = QGridLayout(); health_grid.setSpacing(8); health_grid.setAlignment(Qt.AlignCenter)
+        def mk_ph_lbl(txt, col):
+            l = QLabel(txt); l.setObjectName("tactical_metric_label")
+            l.setStyleSheet(f"color: {col};")
+            return l
+        
+        health_grid = QGridLayout(); health_grid.setSpacing(20); health_grid.setAlignment(Qt.AlignCenter)
+        def mk_ph_lbl(txt):
+            l = QLabel(txt); l.setObjectName("tactical_metric_label")
+            return l
+        
+        self.lbl_ph_weak = mk_ph_lbl("🔴 WEAK: 0")
+        self.lbl_ph_reused = mk_ph_lbl("🟡 REUSED: 0")
+        self.lbl_ph_strong = mk_ph_lbl("🟢 STRONG: 0")
+        self.lbl_ph_old = mk_ph_lbl("⏳ EXPIRED: 0")
+
+        health_grid.addWidget(self.lbl_ph_weak, 0, 0); health_grid.addWidget(self.lbl_ph_reused, 0, 1)
+        health_grid.addWidget(self.lbl_ph_strong, 1, 0); health_grid.addWidget(self.lbl_ph_old, 1, 1)
+        ph_l.addLayout(health_grid)
+
+        # Mover el botón hacia abajo para que no se vea amontonado
+        ph_l.addStretch()
+        self.btn_fix_health = QPushButton("FIX ISSUES →"); self.btn_fix_health.setObjectName("btn_primary_small")
+        self.btn_fix_health.setCursor(Qt.PointingHandCursor); self.btn_fix_health.setFixedHeight(28)
+        ph_l.addWidget(self.btn_fix_health, alignment=Qt.AlignRight)
+        
+        grid.addWidget(self.card_health, 1, 2, 2, 1)
+
+        # 4. SECURITY WATCH / INTEL (Tactical Topology)
+        self.card_analytics = GlassCard(); self.card_analytics.setFixedHeight(280); self.card_analytics.setProperty("depth", "dashboard")
+        va_l = QVBoxLayout(self.card_analytics); va_l.setContentsMargins(25, 25, 25, 25); va_l.setSpacing(15); va_l.setAlignment( Qt.AlignTop)
+        
+        va_h = QLabel("SECURITY WATCH"); va_h.setObjectName("dashboard_card_title")
+        va_l.addWidget(va_h, alignment=Qt.AlignCenter)
+        va_l.addSpacing(15)
+        
+        insight_layout = QHBoxLayout(); insight_layout.setSpacing(15)
+        
+        # Left: Radar View Replacement (Tactical Pulse Bars)
+        self.radar = TacticalPulseBars()
+        self.radar.setFixedWidth(240)
+        insight_layout.addWidget(self.radar)
+        
+        # Right: Bento Intel Labels (Bento Intelligence Engine)
+        intel_box = QVBoxLayout(); intel_box.setSpacing(12); intel_box.setAlignment(Qt.AlignVCenter)
+        
+        self.lbl_threats_info = QLabel("STATUS: SECURE")
+        self.lbl_threats_info.setObjectName("tactical_metric_label")
+        self.lbl_threats_info.setWordWrap(True)
+        
+        self.lbl_integrity_info = QLabel("INTEGRITY: OPTIMAL")
+        self.lbl_integrity_info.setObjectName("tactical_metric_label")
+        self.lbl_integrity_info.setWordWrap(True)
+
+        self.lbl_va_risk = QLabel(); self.lbl_va_risk.setObjectName("tactical_metric_label")
+        self.lbl_va_unused = QLabel(); self.lbl_va_unused.setObjectName("tactical_metric_label")
+        self.lbl_va_rotation = QLabel(); self.lbl_va_rotation.setObjectName("tactical_metric_label")
+        self.lbl_va_access = QLabel(); self.lbl_va_access.setObjectName("tactical_metric_label")
+        
+        intel_box.addWidget(self.lbl_threats_info)
+        intel_box.addWidget(self.lbl_integrity_info)
+        intel_box.addSpacing(5)
+        intel_box.addWidget(self.lbl_va_risk)
+        intel_box.addWidget(self.lbl_va_unused)
+        intel_box.addWidget(self.lbl_va_rotation)
+        intel_box.addWidget(self.lbl_va_access)
+        
+        insight_layout.addLayout(intel_box, 1) # Give it stretch
+        
+        va_l.addLayout(insight_layout)
+
+        va_l.addStretch()
+        grid.addWidget(self.card_analytics, 1, 3, 2, 1)
+
+        # 5. ACTIVITY LOG V2 (Intelligent Feed)
+        pulse_card = GlassCard(); pulse_l = QVBoxLayout(pulse_card); pulse_card.setProperty("depth", "dashboard")
+        pulse_l.setContentsMargins(25, 25, 25, 25); pulse_l.setSpacing(15)
+        pulse_card.setFixedHeight(210) 
+
+        # --- HEADER TÁCTICO CON FILTROS ---
+        pulse_h = QHBoxLayout(); pulse_h.setSpacing(5)
+        
+        lbl_act = QLabel("RECENT ACTIVITY"); lbl_act.setObjectName("dashboard_card_title")
+        pulse_h.addWidget(lbl_act)
+        
+        pulse_h.addStretch()
+        
+        # Filtros
+        self.btn_filter_all = QPushButton("ALL"); self.btn_filter_all.setCheckable(True); self.btn_filter_all.setChecked(True)
+        self.btn_filter_auth = QPushButton("AUTH"); self.btn_filter_auth.setCheckable(True)
+        self.btn_filter_secrets = QPushButton("SECRETS"); self.btn_filter_secrets.setCheckable(True)
+        self.btn_filter_admin = QPushButton("ADMIN"); self.btn_filter_admin.setCheckable(True)
+        self.btn_filter_global = QPushButton("🌐 GLOBAL"); self.btn_filter_global.setCheckable(True)
+        # Solo mostrar GLOBAL si es admin (esto se maneja en _apply_role_restrictions o aquí mismo)
+        if hasattr(self, 'current_role') and self.current_role.lower() != "admin":
+            self.btn_filter_global.hide()
+        
+        self.filter_group = QButtonGroup(self); self.filter_group.setExclusive(True)
+        
+        filters = [self.btn_filter_all, self.btn_filter_auth, self.btn_filter_secrets, self.btn_filter_admin, self.btn_filter_global]
+        for b in filters:
+            b.setCursor(Qt.PointingHandCursor); b.setFixedHeight(24)
+            b.setObjectName("activity_filter_btn")
+            # Estilo Táctico para Filtros (10px) - Simplified to let QSS handle most of it
+            b.setStyleSheet("font-size: 10px; font-weight: 700; font-family: 'Consolas';")
+            pulse_h.addWidget(b)
+            self.filter_group.addButton(b)
+
+        pulse_l.addLayout(pulse_h)
+        pulse_l.addSpacing(5)
+
+        # --- SCROLL AREA INTELIGENTE ---
+        self.scroll_activity = QScrollArea(); self.scroll_activity.setWidgetResizable(True)
+        self.scroll_activity.setStyleSheet("background: transparent; border: none;")
+        self.scroll_activity.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_activity.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        self.activity_container_widget = QWidget(); self.activity_container_widget.setStyleSheet("background: transparent;")
+        self.activity_layout = QVBoxLayout(self.activity_container_widget)
+        self.activity_layout.setContentsMargins(0, 0, 0, 0); self.activity_layout.setSpacing(2)
+        self.activity_layout.setAlignment(Qt.AlignTop)
+        
+        self.scroll_activity.setWidget(self.activity_container_widget)
+        pulse_l.addWidget(self.scroll_activity)
+        
+        grid.addWidget(pulse_card, 2, 0, 1, 1)
+
+        # 6. AI GUARDIAN (Active Defense)
+        ai_card = GlassCard(); ai_l = QVBoxLayout(ai_card); ai_card.setProperty("depth", "dashboard")
+        ai_l.setContentsMargins(25, 25, 25, 25); ai_l.setSpacing(15)
+        ai_card.setFixedHeight(210)
+        
+        ai_h = QLabel("🤖 AI GUARDIAN"); ai_h.setObjectName("dashboard_card_title")
+        ai_l.addWidget(ai_h)
+
+        # Scroll Area para Recomendaciones
+        self.scroll_ai = QScrollArea(); self.scroll_ai.setWidgetResizable(True)
+        self.scroll_ai.setStyleSheet("background: transparent; border: none;")
+        self.scroll_ai.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll_ai.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        self.ai_container = QWidget(); self.ai_container.setStyleSheet("background: transparent;")
+        self.ai_layout = QVBoxLayout(self.ai_container); self.ai_layout.setContentsMargins(0,0,0,0); self.ai_layout.setSpacing(8)
+        self.ai_layout.setAlignment(Qt.AlignTop)
+        
+        self.scroll_ai.setWidget(self.ai_container)
+        ai_l.addWidget(self.scroll_ai)
+        
+        grid.addWidget(ai_card, 2, 1, 1, 1)
+
+        # 7. QUICK ACTIONS
+        actions_card = GlassCard(); actions_card.setFixedHeight(84); actions_card.setProperty("depth", "dashboard")
+        al = QHBoxLayout(actions_card); al.setContentsMargins(20,0,20,0); al.setSpacing(12)
+        
+        def mk_quick_btn(icon, text, col_key):
+            b = QPushButton(f"{icon} {text}"); b.setFixedHeight(54); b.setCursor(Qt.PointingHandCursor)
+            b.setObjectName("quick_action_btn")
+            b.setProperty("btn_type", col_key) # col_key like 'vault', 'activity', etc.
+            return b
+
+        if self.current_role == "admin":
+            self.btn_go_vault = mk_quick_btn("👥", "USUARIOS", "primary")
+            self.btn_go_activity = mk_quick_btn("📜", "AUDITORÍA", "ai_sec")
+            self.btn_go_ai = mk_quick_btn("🛡️", "INTEGRIDAD", "ai")
+            self.btn_go_sync = mk_quick_btn("🔄", "SINCRONIZAR", "success")
+            self.btn_go_services = mk_quick_btn("💎", "SERVICIOS", "primary")
+        else:
+            self.btn_go_vault = mk_quick_btn("🔐", "BÓVEDA", "primary")
+            self.btn_go_activity = mk_quick_btn("📜", "HISTORIAL", "ai_sec")
+            self.btn_go_ai = mk_quick_btn("🧠", "ESCANEO AI", "ai")
+            self.btn_go_sync = mk_quick_btn("🔄", "SINCRONIZAR", "success")
+            self.btn_go_services = mk_quick_btn("➕", "SERVICIOS", "primary")
+        
+        for b in [self.btn_go_vault, self.btn_go_activity, self.btn_go_ai, self.btn_go_sync, self.btn_go_services]: al.addWidget(b)
+        
+        # --- BARRA FLOTANTE (DASHBOARD) ---
+        self.float_bar_dashboard = QFrame()
+        self.float_bar_dashboard.setObjectName("float_bar_dashboard")
+        self.float_bar_dashboard.setFixedHeight(0)
+        # Styles moved to QSS
+        pass
+        
+        layout.addLayout(grid)
+        layout.addWidget(actions_card)
+        
+        scroll.setWidget(container)
+        
+        # PANEL LATERAL DE DETALLES (Dashboard)
+        self.side_panel_dashboard = QWidget()
+        self.side_panel_dashboard.setObjectName("side_detail_panel")
+        self.side_panel_dashboard.setFixedWidth(400)
+        self.side_panel_dashboard.hide()
+        
+        # Estructura Horizontal: [Contenido, Panel Lateral]
+        h_box = QHBoxLayout()
+        h_box.setContentsMargins(0,0,0,0); h_box.setSpacing(0)
+        h_box.addWidget(scroll, 1)
+        h_box.addWidget(self.side_panel_dashboard, 0)
+        
+        # Estructura Vertical Final de la Página
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0,0,0,0); page_layout.setSpacing(0)
+        page_layout.addLayout(h_box, 1)
+        page_layout.addWidget(self.float_bar_dashboard, 0)
+        
+        # Objetos técnicos necesarios para compatibilidad
+        self.table = QTableWidget(self); self.table.hide()
+        self.btn_add = QPushButton(self); self.btn_add.hide()
+        self.btn_sync = QPushButton(self); self.btn_sync.hide()
+        self.btn_delete = QPushButton(self); self.btn_delete.hide()
+        return page
+
+    def _module_vault(self):
+        page = QWidget(); l = QVBoxLayout(page); l.setContentsMargins(35, 25, 35, 35); l.setSpacing(20)
+        v_name = "PASSGUARDIAN"
+        if hasattr(self, 'sm') and self.sm: v_name = self.sm.get_meta("instance_name") or "PASSGUARDIAN"
+        self.identity_banner_vault = VaultIdentityBanner(v_name, show_badge=False)
+        l.addWidget(self.identity_banner_vault)
+
+        header = QHBoxLayout(); title = QLabel("🔐 VAULT MANAGEMENT"); title.setObjectName("vault_title_label")
+        header.addWidget(title); self.search_vault = QLineEdit(); 
+        self.search_vault.setPlaceholderText("🔍 Search credentials..."); self.search_vault.setFixedWidth(260); self.search_vault.setObjectName("search_bar")
+        header.addWidget(self.search_vault); header.addStretch()
+        
+        self.btn_import = QPushButton("📥"); self.btn_export = QPushButton("📤"); self.btn_import.setCursor(Qt.PointingHandCursor); self.btn_export.setCursor(Qt.PointingHandCursor)
+        self.btn_import.setObjectName("vault_action_btn"); self.btn_export.setObjectName("vault_action_btn")
+        header.addWidget(self.btn_import); header.addWidget(self.btn_export); header.addSpacing(12)
+        
+        self.btn_add_vault = QPushButton("  ➕  NEW CREDENTIAL  "); self.btn_add_vault.setCursor(Qt.PointingHandCursor); self.btn_add_vault.setObjectName("btn_add_vault")
+        header.addWidget(self.btn_add_vault); l.addLayout(header)
+        
+        t_card = GlassCard(); tl = QVBoxLayout(t_card); tl.setContentsMargins(1,1,1,1)
+        self.table_vault = QTableWidget(0, 10)
+        self.table_vault.setAlternatingRowColors(False)  # CRITICAL: Disable OS colors!
+        self.table_vault.verticalHeader().setVisible(False)
+        self.table_vault.setShowGrid(False)
+        self.table_vault.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table_vault.setHorizontalHeaderLabels(["○", "LVL", "SYNC", "SERVICE", "PROPIETARIO", "ANTIGÜEDAD", "NOTAS", "PASSWORD", "ACCIONES", "STATUS"])
+        
+        # DARK MODE SAAS - ULTRA DARK (PREMIUM SLATE)
+        # TABLE STYLING DELEGATED TO QSS (dashboard.qss)
+        self.table_vault.setObjectName("vault_table") 
+        
+        hhv = self.table_vault.horizontalHeader(); hhv.setSectionResizeMode(QHeaderView.Fixed)
+        self.table_vault.setColumnWidth(0, 45)  # Selection
+        self.table_vault.setColumnWidth(1, 65)  # LVL (Emoji + text)
+        self.table_vault.setColumnWidth(2, 75)  # SYNC (Emoji + text)
+        self.table_vault.setColumnWidth(3, 220) # SERVICE
+        self.table_vault.setColumnWidth(4, 150) # PROPIETARIO
+        self.table_vault.setColumnWidth(5, 130) # ANTIGÜEDAD (Full word)
+        self.table_vault.setColumnWidth(6, 300) # NOTAS (More space)
+        self.table_vault.setColumnWidth(7, 280) # PASSWORD
+        self.table_vault.setColumnWidth(8, 120) # ACCIONES
+        self.table_vault.setColumnWidth(9, 100) # STATUS
+        tl.addWidget(self.table_vault); self.side_panel_vault = QWidget(); self.side_panel_vault.setObjectName("side_detail_panel_vault"); self.side_panel_vault.hide()
+        
+        table_vault_with_panel = QHBoxLayout()
+        table_vault_with_panel.setContentsMargins(0, 0, 0, 0)
+        table_vault_with_panel.setSpacing(0)
+        table_vault_with_panel.addWidget(t_card, stretch=1)
+        
+        self.side_panel_vault = QWidget()
+        self.side_panel_vault.setObjectName("side_detail_panel_vault")
+        self.side_panel_vault.setFixedWidth(400)
+        self.side_panel_vault.hide()
+        table_vault_with_panel.addWidget(self.side_panel_vault, stretch=0)
+        
+        l.addLayout(table_vault_with_panel, 1)
+        
+        # --- BARRA FLOTANTE (VAULT) ---
+        self.float_bar_vault = QFrame()
+        self.float_bar_vault.setObjectName("float_bar_vault")
+        self.float_bar_vault.setFixedHeight(0)
+        # Styles moved to QSS
+        pass
+        l.addWidget(self.float_bar_vault, 0)
+
+        self.btn_sync_vault = QPushButton("🔄 SYNC VAULT"); self.btn_sync_vault.setFixedWidth(250)
+        self.btn_sync_vault.setCursor(Qt.PointingHandCursor); self.btn_sync_vault.setObjectName("btn_sync_vault")
+        v_actions = QHBoxLayout()
+        v_actions.addStretch(); v_actions.addWidget(self.btn_sync_vault); l.addLayout(v_actions)
+        return page
+
+    def _module_ai(self):
+        page = QWidget(); layout = QHBoxLayout(page); layout.setContentsMargins(40, 40, 40, 40); layout.setSpacing(30)
+        core_card = GlassCard(); cl = QVBoxLayout(core_card); cl.setAlignment(Qt.AlignCenter); cl.setSpacing(18)
+
+        core_lbl = QLabel("🧠"); core_lbl.setObjectName("ai_core_icon"); cl.addWidget(core_lbl)
+        cl.addWidget(QLabel("AI GUARDIAN", objectName="ai_module_title"))
+        cl.addWidget(QLabel("Neural Security Analysis", objectName="ai_module_subtitle"))
+        layout.addWidget(core_card, 1); ops_card = GlassCard(); ol = QVBoxLayout(ops_card); ol.setContentsMargins(45, 45, 45, 45); ol.setSpacing(22)
+        ol.addWidget(QLabel("🔍 OPERATIONS", objectName="ai_ops_title"))
+        ol.addWidget(QLabel("Run intelligent analysis to detect weak patterns and security vulnerabilities in your vault.", objectName="ai_ops_desc"))
+        self.btn_ai_invoke = QPushButton("  ⚡  START AI SCAN  "); self.btn_ai_invoke.setFixedHeight(60); self.btn_ai_invoke.setCursor(Qt.PointingHandCursor)
+        self.btn_ai_invoke.setObjectName("btn_ai_invoke")
+        ol.addWidget(self.btn_ai_invoke); ol.addStretch(); console = QLabel("> System ready\n> AI neural network initialized\n> Awaiting command..."); console.setObjectName("ai_console")
+        ol.addWidget(console); layout.addWidget(ops_card, 2)
+        return page
+
+    def _module_activity(self):
+        page = QWidget(); l = QVBoxLayout(page); l.setContentsMargins(35, 30, 35, 35); l.setSpacing(25)
+        h = QHBoxLayout(); t = QLabel("📜 ACTIVITY LOG"); t.setObjectName("activity_log_title")
+        self.btn_refresh_audit_cloud = QPushButton("   🔄   SYNC HISTORY   ")
+        self.btn_refresh_audit_cloud.setCursor(Qt.PointingHandCursor); self.btn_refresh_audit_cloud.setObjectName("btn_sync_logs")
+        h.addWidget(t); h.addStretch(); h.addWidget(self.btn_refresh_audit_cloud); l.addLayout(h)
+        # --- BARRA DE FILTROS INTEGRADAS ---
+        f_row = QHBoxLayout(); f_row.setSpacing(10)
+        self.btn_mod_all = QPushButton("ALL"); self.btn_mod_all.setCheckable(True); self.btn_mod_all.setChecked(True)
+        self.btn_mod_auth = QPushButton("AUTH"); self.btn_mod_auth.setCheckable(True)
+        self.btn_mod_sec = QPushButton("SECRETS"); self.btn_mod_sec.setCheckable(True)
+        self.btn_mod_adm = QPushButton("ADMIN"); self.btn_mod_adm.setCheckable(True)
+        self.btn_mod_global = QPushButton("🌐 GLOBAL CLOUD"); self.btn_mod_global.setCheckable(True)
+        
+        self.mod_filter_group = QButtonGroup(self); self.mod_filter_group.setExclusive(True)
+        
+        mod_filters = [self.btn_mod_all, self.btn_mod_auth, self.btn_mod_sec, self.btn_mod_adm, self.btn_mod_global]
+        for b in mod_filters:
+            b.setCursor(Qt.PointingHandCursor); b.setFixedHeight(30); b.setObjectName("activity_filter_btn")
+            b.setStyleSheet("""
+                QPushButton { background: rgba(255,255,255,0.03); color: #94a3b8; font-size: 11px; font-weight: 700; border: 1px solid #334155; border-radius: 6px; padding: 0 15px; font-family: 'Consolas'; }
+                QPushButton:checked { background: rgba(6, 182, 212, 0.1); color: #06b6d4; border: 1px solid #06b6d4; }
+                QPushButton:hover { background: rgba(255,255,255,0.05); }
+            """)
+            f_row.addWidget(b)
+            self.mod_filter_group.addButton(b)
+        
+        f_row.addStretch()
+        l.addLayout(f_row)
+
+        t_card = GlassCard(); tl = QVBoxLayout(t_card); tl.setContentsMargins(1,1,1,1)
+        self.table_audit = QTableWidget(0, 7)
+        self.table_audit.setAlternatingRowColors(False)  # CRITICAL: Disable OS colors!
+        self.table_audit.verticalHeader().setVisible(False)
+        self.table_audit.verticalHeader().setDefaultSectionSize(38) # Aumentar altura de fila para legibilidad
+        self.table_audit.setShowGrid(False)
+        headers = ["TIMESTAMP", "USER", "ACTION", "TARGET", "DEVICE", "DETAILS", "STATUS"]
+        self.table_audit.setHorizontalHeaderLabels(headers)
+        
+        
+        # DARK MODE SAAS - ULTRA DARK (NO WHITE/GREY EVER!)
+        # TABLE STYLING DELEGATED TO QSS (dashboard.qss)
+        self.table_audit.setObjectName("audit_table") # Optional: specific ID if needed
+        
+        hh = self.table_audit.horizontalHeader(); hh.setSectionResizeMode(QHeaderView.Interactive); hh.resizeSection(0, 170); hh.resizeSection(1, 100); hh.resizeSection(2, 100); hh.resizeSection(3, 140); hh.resizeSection(4, 140); hh.setSectionResizeMode(5, QHeaderView.Stretch); hh.resizeSection(6, 120)
+        tl.addWidget(self.table_audit); l.addWidget(t_card)
+        return page
+
+    def _module_admin(self):
+        page = QWidget(); main_layout = QVBoxLayout(page); main_layout.setContentsMargins(50, 40, 50, 50); main_layout.setSpacing(30)
+        h = QHBoxLayout(); t = QLabel("👥 PROTOCOLO DE ADMINISTRACIÓN"); t.setObjectName("admin_title")
+        h.addWidget(t); h.addStretch(); main_layout.addLayout(h)
+        def add_command_row(layout, icon, title, subtitle, btn_obj, btn_text, color_key):
+            row = QWidget(); row.setObjectName("admin_command_row"); rl = QHBoxLayout(row); rl.setContentsMargins(22, 18, 22, 18); ic = QLabel(icon); ic.setObjectName("admin_row_icon"); rl.addWidget(ic)
+            tl = QVBoxLayout(); tl.setSpacing(5); l_tit = QLabel(title); l_tit.setObjectName("admin_row_title"); l_sub = QLabel(subtitle); l_sub.setObjectName("admin_row_subtitle")
+            tl.addWidget(l_tit); tl.addWidget(l_sub); rl.addLayout(tl); rl.addStretch(); btn_obj.setText(f"  {btn_text}  "); btn_obj.setCursor(Qt.PointingHandCursor); btn_obj.setFixedWidth(180); btn_obj.setObjectName("admin_action_btn"); btn_obj.setProperty("btn_type", color_key); rl.addWidget(btn_obj); layout.addWidget(row); line = QFrame(); line.setFixedHeight(2); line.setObjectName("admin_row_line"); layout.addWidget(line)
+        cat_1 = QLabel("AUTORIDAD E IDENTIDAD"); cat_1.setObjectName("admin_category_label"); main_layout.addWidget(cat_1); card_id = GlassCard(); l_id = QVBoxLayout(card_id); l_id.setContentsMargins(0, 12, 0, 12); l_id.setSpacing(0); self.btn_manage_users_real = QPushButton()
+        add_command_row(l_id, "👥", "NODOS DE ACCESO", "Gestión de privilegios y identidades", self.btn_manage_users_real, "MODIFICAR", "primary"); self.btn_sessions_real = QPushButton(); add_command_row(l_id, "📡", "MONITOR OPERATIVO", "Rastreo de pulsos de conexión", self.btn_sessions_real, "ABRIR", "accent"); main_layout.addWidget(card_id)
+        cat_2 = QLabel("MANTENIMIENTO DE NÚCLEO"); cat_2.setObjectName("admin_category_label"); main_layout.addWidget(cat_2); card_sec = GlassCard(); l_sec = QVBoxLayout(card_sec); l_sec.setContentsMargins(0, 12, 0, 12); l_sec.setSpacing(0); self.btn_regenerate_2fa = QPushButton()
+        add_command_row(l_sec, "🔐", "ROTACIÓN TOTP", "Regeneración de vectores de seguridad", self.btn_regenerate_2fa, "ROTAR", "primary"); self.btn_clean_local = QPushButton(); add_command_row(l_sec, "🧹", "DEPURACIÓN", "Optimización de base física", self.btn_clean_local, "VACIADO", "success"); main_layout.addWidget(card_sec); cat_3 = QLabel("ZONA DE EXCLUSIÓN"); cat_3.setObjectName("admin_category_danger_label"); main_layout.addWidget(cat_3); card_danger = GlassCard(); l_danger = QVBoxLayout(card_danger); l_danger.setContentsMargins(0, 12, 0, 12); l_danger.setSpacing(0); self.btn_purge = QPushButton()
+        add_command_row(l_danger, "☢️", "PURGA REMOTA", "Eliminación irreversible de nodos", self.btn_purge, "EJECUTAR", "danger"); main_layout.addWidget(card_danger); main_layout.addStretch(); return page
+
+    def _module_settings(self):
+        container = QWidget(); main_v = QVBoxLayout(container); main_v.setContentsMargins(0,0,0,0); scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame); scroll.setObjectName("settings_scroll_area")
+        page = QWidget(); page.setObjectName("settings_page"); l = QVBoxLayout(page); l.setContentsMargins(50, 40, 50, 70); l.setSpacing(18)
+        h = QHBoxLayout(); t = QLabel("⚙️ CONFIGURACIÓN DE TERMINAL"); t.setObjectName("settings_title"); h.addWidget(t); h.addStretch(); l.addLayout(h); l.addSpacing(25)
+        def add_setting_row(layout, icon, title, subtitle, widget):
+            row = QWidget(); row.setObjectName("setting_row"); rl = QHBoxLayout(row); rl.setContentsMargins(25, 18, 25, 18); ic = QLabel(icon); ic.setObjectName("setting_icon"); rl.addWidget(ic); tl = QVBoxLayout(); tl.setSpacing(5); t_lbl = QLabel(title); t_lbl.setObjectName("setting_row_title"); s_lbl = QLabel(subtitle); s_lbl.setObjectName("setting_row_subtitle"); tl.addWidget(t_lbl); tl.addWidget(s_lbl); rl.addLayout(tl); rl.addStretch(); rl.addWidget(widget); layout.addWidget(row)
+        l.addWidget(QLabel("INTERFAZ OPERATIVA", objectName="settings_category_label"))
+        
+        # Idioma
+        self.combo_lang = QComboBox(); self.combo_lang.addItems(["Español (ES)", "English (EN)"]); self.combo_lang.setFixedWidth(170)
+        self.combo_lang.setObjectName("settings_combo")
+        add_setting_row(l, "🌐", "Idioma", "Preferencias de lenguaje del HUD", self.combo_lang)
+        
+        # NUEVO: Selector de Tema Visual
+        self.combo_theme = QComboBox()
+        self.combo_theme.addItems(["Tactical Dark (Default)", "Industrial Ops", "Cyber Arctic (Light)", "Neon Overdrive (Trending)"])
+        self.combo_theme.setFixedWidth(170)
+        self.combo_theme.setObjectName("settings_combo")
+        add_setting_row(l, "🎨", "Tema Visual", "Personalización de la interfaz", self.combo_theme)
+
+        self.combo_lock_time = QComboBox(); self.combo_lock_time.addItems(["1 Minuto", "5 Minutos", "10 Minutos", "30 Minutos", "60 Minutos"]); self.combo_lock_time.setFixedWidth(170); self.combo_lock_time.setObjectName("settings_combo"); add_setting_row(l, "⏱️", "Auto-Bloqueo", "Tiempo de espera por inactividad", self.combo_lock_time); l.addSpacing(20)
+        l.addWidget(QLabel("SEGURIDAD DE NÚCLEO", objectName="settings_category_label")); self.btn_change_pwd_real = QPushButton("MODIFICAR"); self.btn_change_pwd_real.setCursor(Qt.PointingHandCursor); self.btn_change_pwd_real.setObjectName("btn_settings_action"); add_setting_row(l, "🔑", "Firma Maestra", "Actualizar llave de cifrado", self.btn_change_pwd_real)
+        self.btn_repair_vault_dashboard = QPushButton("REPARAR"); self.btn_repair_vault_dashboard.setCursor(Qt.PointingHandCursor); self.btn_repair_vault_dashboard.setObjectName("btn_settings_repair"); add_setting_row(l, "🛠️", "Integridad de Bóveda", "Diagnóstico de base física", self.btn_repair_vault_dashboard); l.addSpacing(20)
+        # --- GENERADOR DE FORTALEZA ALTA ---
+        l.addWidget(QLabel("FORTALEZA DE CONTRASEÑA (GENERADOR)", objectName="settings_generator_title"))
+        gen_card = QFrame(); gen_card.setObjectName("generator_card")
+        gen_main_l = QVBoxLayout(gen_card); gen_main_l.setContentsMargins(30, 25, 30, 25); gen_main_l.setSpacing(20)
+        
+        # Fila 1: Longitud
+        saved_len = self.settings.value("length", 20, type=int)
+        
+        len_l = QHBoxLayout(); l_len_tit = QLabel("LONGITUD DE SEGURIDAD:"); l_len_tit.setObjectName("generator_label")
+        len_l.addWidget(l_len_tit)
+        self.length_label = QLabel(str(saved_len)); self.length_label.setObjectName("generator_value")
+        len_l.addStretch(); len_l.addWidget(self.length_label); gen_main_l.addLayout(len_l)
+        
+        self.length_slider = QSlider(Qt.Horizontal)
+        self.length_slider.setObjectName("generator_slider")
+        self.length_slider.setRange(8, 64); self.length_slider.setValue(saved_len) # Limitado a 64 para mayor cordura visual
+        self.length_slider.valueChanged.connect(self._on_length_changed)
+        gen_main_l.addWidget(self.length_slider)
+        
+        # Fila 2: Complejidad (Checkboxes Amigables)
+        comp_l = QHBoxLayout(); comp_l.setSpacing(20)
+        def mk_cb(txt, key_name, default_val=True):
+            cb = QCheckBox(txt); cb.setCursor(Qt.PointingHandCursor)
+            cb.setObjectName("generator_checkbox")
+            
+            # Cargar estado guardado
+            is_checked = str(self.settings.value(key_name, default_val)).lower() in ("true", "1")
+            cb.setChecked(is_checked)
+            
+            cb.stateChanged.connect(self._save_generator_settings); return cb
+        
+        self.cb_upper = mk_cb("MAYÚSCULAS", "upper"); self.cb_lower = mk_cb("MINÚSCULAS", "lower") 
+        self.cb_digits = mk_cb("NÚMEROS", "digits"); self.cb_symbols = mk_cb("SÍMBOLOS", "symbols")
+        comp_l.addWidget(self.cb_upper); comp_l.addWidget(self.cb_lower); comp_l.addWidget(self.cb_digits); comp_l.addWidget(self.cb_symbols)
+        gen_main_l.addLayout(comp_l)
+        
+        # Botón de Generación
+        self.btn_generate_advanced = QPushButton("GENERAR NUEVA CONTRASEÑA ESTRATÉGICA")
+        self.btn_generate_advanced.setCursor(Qt.PointingHandCursor)
+        self.btn_generate_advanced.setFixedHeight(50)
+        self.btn_generate_advanced.setObjectName("btn_generate_advanced")
+        self.btn_generate_advanced.clicked.connect(self._generate_password_advanced)
+        gen_main_l.addWidget(self.btn_generate_advanced)
+        
+        l.addWidget(gen_card)
+        l.addSpacing(20)
+        
+        # AI GENERATOR (Actualizado para encajar)
+        # AI GENERATOR (Actualizado para encajar)
+        l.addWidget(QLabel("INTELIGENCIA ESTRATÉGICA (IA)", objectName="settings_generator_title"))
+        ai_card = QWidget(); ai_card.setObjectName("ai_settings_card")
+        ail = QVBoxLayout(ai_card); ail.setContentsMargins(30, 25, 30, 25); ail.setSpacing(18); pr = QHBoxLayout(); pr.addWidget(QLabel("🧠", objectName="ai_card_icon")); prv_l = QVBoxLayout(); prv_l.setSpacing(5); prv_l.addWidget(QLabel("PROVEEDOR ESTRATÉGICO", objectName="ai_provider_title")); prv_l.addWidget(QLabel("Seleccionar motor de IA", objectName="ai_provider_subtitle")); pr.addLayout(prv_l); pr.addStretch(); self.combo_provider = QComboBox(); self.combo_provider.addItems(["Google Gemini ✨", "OpenAI ChatGPT 🤖", "Anthropic Claude 🛡️"]); self.combo_provider.setFixedWidth(210); self.combo_provider.setObjectName("ai_combo_provider"); ail.addLayout(pr); keys_grid = QHBoxLayout(); keys_grid.setSpacing(12)
+        def mk_key_in(ph): s = QLineEdit(); s.setPlaceholderText(ph); s.setEchoMode(QLineEdit.Password); s.setObjectName("ai_key_input"); return s
+        self.input_key_gemini = mk_key_in("Gemini Key"); self.input_key_chatgpt = mk_key_in("ChatGPT Key"); self.input_key_claude = mk_key_in("Claude Key"); keys_grid.addWidget(self.input_key_gemini); keys_grid.addWidget(self.input_key_chatgpt); keys_grid.addWidget(self.input_key_claude); ail.addLayout(keys_grid); self.btn_save_settings = QPushButton("GUARDAR CONFIGURACIÓN IA"); self.btn_save_settings.setCursor(Qt.PointingHandCursor); self.btn_save_settings.setObjectName("btn_save_ai_settings"); ail.addWidget(self.btn_save_settings); l.addWidget(ai_card); l.addSpacing(20);
+        
+        # HERRAMIENTAS DE PROMPT
+        l.addWidget(QLabel("PROMPT DE RAZONAMIENTO", objectName="settings_generator_title")); prompt_card = QWidget(); prompt_card.setObjectName("ai_prompt_card"); prompt_l = QHBoxLayout(prompt_card); prompt_l.setContentsMargins(15, 15, 15, 15); prompt_l.setSpacing(12); self.input_ai_prompt = QLineEdit(); self.input_ai_prompt.setPlaceholderText("Semilla creativa para la IA..."); self.input_ai_prompt.setObjectName("ai_prompt_input"); self.btn_generate_ai = QPushButton("⚡ GENERAR (IA)"); self.btn_generate_ai.setFixedWidth(180); self.btn_generate_ai.setObjectName("btn_generate_ai"); prompt_l.addWidget(self.input_ai_prompt, 1); prompt_l.addWidget(self.btn_generate_ai); l.addWidget(prompt_card); l.addSpacing(20)
+        l.addWidget(QLabel("DATA MANAGEMENT", objectName="settings_generator_title")); cloud_box = QWidget(); cl_l = QHBoxLayout(cloud_box); cl_l.setContentsMargins(0,0,0,0); cl_l.setSpacing(12); self.btn_backup = QPushButton("UPLOAD"); self.btn_restore = QPushButton("DOWNLOAD")
+        for b in [self.btn_backup, self.btn_restore]: b.setCursor(Qt.PointingHandCursor); b.setObjectName("btn_data_manage_cloud"); cl_l.addWidget(b)
+        add_setting_row(l, "☁️", "Cloud Backup", "Manual synchronization", cloud_box); local_box = QWidget(); loc_l = QHBoxLayout(local_box); loc_l.setContentsMargins(0,0,0,0); loc_l.setSpacing(12); self.btn_local_backup = QPushButton("BACKUP"); self.btn_local_restore = QPushButton("RESTORE")
+        for b in [self.btn_local_backup, self.btn_local_restore]: b.setCursor(Qt.PointingHandCursor); b.setObjectName("btn_data_manage_local"); loc_l.addWidget(b)
+        add_setting_row(l, "📂", "Local Backup", "Database files", local_box); self.btn_purge_private = QPushButton("PURGE PRIVATE"); self.btn_purge_private.setCursor(Qt.PointingHandCursor); self.btn_purge_private.setObjectName("btn_purge_private"); add_setting_row(l, "🔥", "Danger Zone", "Delete private data", self.btn_purge_private); l.addStretch(); scroll.setWidget(page); main_v.addWidget(scroll); return container
+
+    def retranslateUi(self): self._load_table()
+    def _start_clock(self): self.clock_timer = QTimer(self); self.clock_timer.timeout.connect(self._update_clock); self.clock_timer.start(1000)
+    def _update_clock(self): pass
+    def _password_strength_icon(self, pwd: str) -> str:
+        score = self._score_password(pwd)
+        return "🔒" if score >= 70 else "🔓"
+
+    def _score_password(self, pwd: str) -> int:
+        if not pwd or not isinstance(pwd, str): return 0
+        if pwd == "[⚠️ Error de Llave]" or pwd == "[Bloqueado 🔑]": return 0
+        s = 0
+        if len(pwd) >= 8: s += 20
+        if len(pwd) >= 12: s += 20
+        if any(c.islower() for c in pwd): s += 20
+        if any(c.isupper() for c in pwd): s += 20
+        if any(c.isdigit() for c in pwd): s += 10
+        if any(c in "!@#$%^&*()-_=+[]{}<>?/|\\;:.,~" for c in pwd): s += 10
+        return s

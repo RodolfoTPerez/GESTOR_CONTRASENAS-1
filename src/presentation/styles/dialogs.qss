@@ -1,0 +1,244 @@
+/* --- PREMIUM DIALOG SYSTEM --- */
+QDialog { 
+    background-color: @bg; 
+}
+
+/* NUCLEAR WRAPPER FRAME */
+QFrame#DialogFrame, QFrame#ServiceDialogFrame {
+    background-color: @bg;
+    border: @border-width-main solid @border;
+    border-radius: @border-radius-main;
+}
+
+/* Titles & Visual Hierarchy */
+QLabel#main_title, QLabel#dialog_title { 
+    color: @text; 
+    font-size: 24px; 
+    font-weight: 950; 
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+}
+
+QLabel#subtitle, QLabel#dialog_subtitle { 
+    color: @text_dim; 
+    font-size: 13px; 
+    font-weight: 500;
+}
+
+/* All labels should have transparent backgrounds */
+QLabel {
+    background-color: transparent;
+    color: @text;
+}
+
+/* Form Elements */
+QLineEdit, QTextEdit, QComboBox, QSpinBox {
+    background-color: @bg_sec;
+    border: @border-width-main solid @border;
+    border-radius: @border-radius-main;
+    padding: 14px;
+    font-size: 14px;
+    color: @text;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: @border-width-main solid @primary;
+    background-color: @bg;
+}
+
+/* Buttons System */
+QPushButton#btn_primary, QPushButton#btn_save, QPushButton#btn_confirm { 
+    background: @primary;
+    color: white; 
+    border: none; 
+    border-radius: @border-radius-main; 
+    padding: 10px 16px; 
+    font-weight: 800; 
+    font-size: 12px;
+}
+
+QPushButton#btn_primary:hover { 
+    background: @accent; 
+}
+
+QPushButton#btn_secondary, QPushButton#btn_cancel { 
+    background-color: transparent; 
+    color: @text; 
+    border: @border-width-main solid @border; 
+    border-radius: @border-radius-main; 
+    padding: 10px 16px;
+    font-weight: 700;
+    font-size: 12px;
+}
+
+QPushButton#btn_secondary:hover { 
+    background-color: @primary; 
+    color: white; 
+    border: 1px solid @primary;
+}
+
+/* Special Case: Service Dialog Frame */
+QFrame#ServiceDialogFrame {
+    background-color: @bg;
+    border: none;
+}
+
+/* Password Strength Indicators */
+QProgressBar {
+    background-color: @bg_sec;
+    height: 8px;
+    border-radius: 4px;
+    text-align: center;
+}
+QProgressBar::chunk {
+    border-radius: 4px;
+}
+
+QProgressBar[strength_level="weak"]::chunk { background-color: @danger; }
+QProgressBar[strength_level="medium"]::chunk { background-color: @warning; }
+QProgressBar[strength_level="strong"]::chunk { background-color: @success; }
+QProgressBar[strength_level="secure"]::chunk { background-color: @secondary; }
+
+QLabel[strength_level="strong"] { color: @success; font-weight: 800; }
+QLabel[strength_level="secure"] { color: @secondary; font-weight: 800; }
+
+/* --- DATA TABLES (NUCLEAR STYLING) --- */
+QTableWidget {
+    background-color: @bg_sec;
+    color: @text;
+    gridline-color: @border;
+    border: @border-width-main solid @border;
+    border-radius: @border-radius-main;
+    selection-background-color: @primary;
+    selection-color: white;
+}
+
+QTableWidget::item {
+    padding: 8px;
+    border-bottom: 1px solid @border;
+}
+
+QTableWidget::item:selected {
+    background-color: @primary;
+    color: white;
+}
+
+/* Header Styling - FORCE plain text, NO button style */
+QHeaderView {
+    background-color: transparent;
+    border: none;
+}
+
+QHeaderView::section {
+    background: none;  /* Force no background */
+    background-color: transparent !important;  /* Override everything */
+    color: @text_dim;
+    padding: 10px 8px;
+    font-weight: 500;  /* Even lighter */
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: none;
+    border-bottom: 1px solid @border;
+}
+
+QHeaderView::section:hover {
+    background-color: transparent !important;  /* No hover effect */
+}
+
+QTableCornerButton::section {
+    background-color: @bg;
+    border: none;
+}
+
+/* Table Cell Buttons Fix - Prevent text cutoff */
+QTableWidget QPushButton {
+    border-radius: 4px;  /* Fixed small radius for table buttons */
+    padding: 6px 12px;
+    font-size: 11px;
+    min-height: 24px;
+}
+
+QTableWidget QPushButton#btn_secondary {
+    background-color: transparent;
+    color: @text;
+    border: 1px solid @border;
+    border-radius: 4px;
+}
+
+QTableWidget QPushButton#btn_secondary:hover {
+    background-color: @primary;
+    color: white;
+    border-color: @primary;
+}
+
+QTableWidget QPushButton#btn_danger {
+    background-color: transparent;
+    color: @danger;
+    border: 1px solid @danger;
+    border-radius: 4px;
+}
+
+QTableWidget QPushButton#btn_danger:hover {
+    background-color: @danger;
+    color: white;
+}
+
+/* Icon-only buttons for tables */
+QTableWidget QPushButton#btn_icon,
+QTableWidget QPushButton#btn_icon_danger {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    padding: 4px;
+    margin: auto;  /* Center in cell */
+}
+
+/* Force vertical centering in table cells */
+QTableWidget::item {
+    vertical-align: middle;
+}
+
+QTableWidget QPushButton#btn_icon:hover {
+    background-color: rgba(139, 92, 246, 0.15);  /* Subtle purple glow */
+}
+
+QTableWidget QPushButton#btn_icon_danger:hover {
+    background-color: rgba(239, 68, 68, 0.15);  /* Subtle red glow */
+}
+
+/* Center all items in table cells */
+QTableWidget::item {
+    text-align: center;
+}
+
+/* Scrollbars */
+QScrollBar:vertical {
+    border: none;
+    background: @bg;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: @border;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: none;
+    height: 0px;
+}
+
+/* --- PREMIUM TRANSLUCENT TOOLTIPS --- */
+QToolTip {
+    background-color: rgba(15, 23, 42, 0.95); /* Dark blue, almost opaque for readability */
+    color: @text;
+    border: 1px solid @primary;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+}

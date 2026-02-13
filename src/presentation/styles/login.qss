@@ -1,0 +1,103 @@
+/* --- LOGIN VIEW STYLES --- */
+
+#CentralWidget {
+    background: transparent;
+}
+
+#MainContainer {
+    background-color: @bg;
+    border-radius: @border-radius-main;
+    border: @border-width-main solid @primary;
+}
+
+#LeftPanel {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 @bg, stop:1 @bg_sec);
+    border-top-left-radius: @border-radius-main;
+    border-bottom-left-radius: @border-radius-main;
+}
+
+#RightPanel {
+    background-color: @bg;
+    border-radius: 0px;
+}
+
+QLabel {
+    color: @text;
+}
+
+QLabel#app_title {
+    font-size: 36px;
+    font-weight: 900;
+    color: white;
+    letter-spacing: 2px;
+}
+
+QLabel#tagline {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 1px;
+}
+
+QLabel#welcome_label {
+    font-size: 32px;
+    font-weight: 800;
+    color: @text;
+}
+
+QLabel#subtitle_label {
+    font-size: 14px;
+    color: @text_dim;
+}
+
+/* --- BUTTONS --- */
+QPushButton#login_button {
+    background: @bg; 
+    color: @primary; 
+    font-weight: 900; 
+    font-size: 15px; 
+    border-radius: @border-radius-main; 
+    letter-spacing: 3px;
+    border: @border-width-main solid @primary;
+    text-transform: uppercase;
+}
+
+QPushButton#login_button:hover { 
+    background: @primary; 
+    color: @bg;
+}
+
+QPushButton#btn_reg_toggle {
+    border: none;
+    color: @secondary;
+    font-weight: 700;
+    font-size: 13px;
+}
+
+QPushButton#btn_reg_toggle:hover {
+    color: @accent;
+    text-decoration: underline;
+}
+
+QPushButton#btn_recovery {
+    border: none;
+    color: @text_dim;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+QPushButton#btn_recovery:hover {
+    color: @text;
+}
+
+/* --- WINDOW CONTROLS --- */
+QPushButton#btn_min, QPushButton#btn_close {
+    border: none;
+    color: @text_dim;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+QPushButton#btn_min:hover, QPushButton#btn_close:hover {
+    color: @text;
+}

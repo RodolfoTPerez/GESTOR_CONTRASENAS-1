@@ -1,10 +1,33 @@
 ﻿# Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.swp
+
+# Credentials & Config
 .env
+.env.local
+global_settings.ini
+
+# Database & Cache
 *.db
 *.sqlite3
+.pytest_cache/
+.agent/
+.gemini/
+
+# Logs
+*.log
+debug.log
+
+# Data/Archive (Sensitive)
+archive/*.json
+archive/*.txt
+archive/*.pdf
+archive/*.db
+
+# OS
 .DS_Store
+Thumbs.db

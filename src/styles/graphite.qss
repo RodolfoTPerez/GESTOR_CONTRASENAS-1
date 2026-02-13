@@ -1,0 +1,131 @@
+/* === BASE GENERAL === */
+QWidget {
+    background-color: #e6e6e6;
+    color: #1f1f1f;
+    font-family: "Segoe UI", "SF Pro Display", sans-serif;
+    font-size: 13px;
+}
+
+/* === INPUTS === */
+QLineEdit, QTextEdit {
+    background-color: #ffffff;
+    color: #1f1f1f;
+    border: 1px solid #bfbfbf;
+    border-radius: 5px;
+    padding: 5px;
+}
+QLineEdit:focus, QTextEdit:focus {
+    border: 1px solid #8c8c8c;
+}
+
+/* === TABLA === */
+QTableWidget {
+    background-color: #ffffff;
+    alternate-background-color: #dcdcdc;
+    color: #1f1f1f;
+    border: 1px solid #bfbfbf;
+    gridline-color: #c8c8c8;
+    border-radius: 4px;
+}
+QTableWidget::item {
+    padding: 6px;
+}
+QTableWidget::item:selected {
+    background-color: #bfbfbf;
+    color: #000000;
+}
+
+/* === ENCABEZADOS === */
+QHeaderView::section {
+    background-color: #d1d1d1;
+    color: #1f1f1f;
+    padding: 6px;
+    font-weight: 600;
+    border: none;
+    border-bottom: 1px solid #bfbfbf;
+}
+
+/* === BOTONES === */
+QPushButton {
+    background-color: #c9c9c9;
+    color: #1f1f1f;
+    border-radius: 6px;
+    padding: 6px 12px;
+    border: 1px solid #a8a8a8;
+    font-weight: 500;
+}
+QPushButton:hover {
+    background-color: #bfbfbf;
+}
+QPushButton:pressed {
+    background-color: #a8a8a8;
+}
+
+/* === BOTÓN LOGOUT === */
+QPushButton#logout_button {
+    background-color: #e6b3b3;
+    border: 1px solid #cc8f8f;
+    color: #7a1f1f;
+}
+QPushButton#logout_button:hover {
+    background-color: #d9a3a3;
+}
+
+/* === BOTONES DE EMOJI === */
+QTableWidget QPushButton {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    min-width: 20px;
+}
+QTableWidget QPushButton:hover {
+    background-color: transparent;
+}
+
+/* === STATUS BAR === */
+QFrame#statusbar {
+    background-color: #ffffff;
+    border: 1px solid #bfbfbf;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+/* === DRAWER === */
+QWidget#drawer {
+    background-color: #e6e6e6;
+    border-left: 1px solid #bfbfbf;
+}
+
+/* === SLIDER === */
+QSlider::handle:horizontal {
+    background: #8c8c8c;
+    border: 1px solid #6e6e6e;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+
+/* === CHECKBOX / RADIO === */
+QCheckBox, QRadioButton {
+    spacing: 8px;
+    color: #1f1f1f;
+}
+QCheckBox::indicator, QRadioButton::indicator {
+    width: 18px;
+    height: 18px;
+}
+/* Botones de emoji dentro de la tabla: copiar, ver, editar */
+QTableWidget QPushButton {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    min-width: 20px;
+}
+
+/* Hover también transparente, para no crear parches */
+QTableWidget QPushButton:hover {
+    background-color: transparent;
+}
