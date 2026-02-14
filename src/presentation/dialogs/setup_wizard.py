@@ -82,6 +82,7 @@ class SetupWizard(QDialog):
         nav_layout.addWidget(self.btn_next)
         layout.addLayout(nav_layout)
 
+    def _create_step1(self):
         page = QWidget()
         v = QVBoxLayout(page)
         h = QLabel(MESSAGES.WIZARD.STEP1_HEAD)
@@ -94,8 +95,11 @@ class SetupWizard(QDialog):
         self.btn_lang_es = QRadioButton("Español (ES)")
         self.btn_lang_en = QRadioButton("English (EN)")
         self.btn_lang_es.setChecked(True)
-        self.btn_lang_es.setStyleSheet("font-size: 16px; padding: 10px;")
-        self.btn_lang_en.setStyleSheet("font-size: 16px; padding: 10px;")
+        
+        colors = self.theme.get_theme_colors()
+        radio_style = f"font-size: 16px; padding: 10px; color: {colors['text']};"
+        self.btn_lang_es.setStyleSheet(radio_style)
+        self.btn_lang_en.setStyleSheet(radio_style)
         
         v.addWidget(self.btn_lang_es)
         v.addWidget(self.btn_lang_en); v.addStretch()
@@ -122,11 +126,15 @@ class SetupWizard(QDialog):
         h.setObjectName("main_title")
         v.addWidget(h); v.addSpacing(15)
 
-        v.addWidget(QLabel(MESSAGES.WIZARD.LBL_ADMIN_USER))
+        lbl_admin = QLabel(MESSAGES.WIZARD.LBL_ADMIN_USER)
+        lbl_admin.setObjectName("dialog_subtitle")
+        v.addWidget(lbl_admin)
         self.input_user = QLineEdit()
         v.addWidget(self.input_user)
 
-        v.addWidget(QLabel(MESSAGES.WIZARD.LBL_MASTER_PWD))
+        lbl_pass = QLabel(MESSAGES.WIZARD.LBL_MASTER_PWD)
+        lbl_pass.setObjectName("dialog_subtitle")
+        v.addWidget(lbl_pass)
         self.input_pass = QLineEdit()
         self.input_pass.setEchoMode(QLineEdit.Password)
         v.addWidget(self.input_pass); v.addStretch()

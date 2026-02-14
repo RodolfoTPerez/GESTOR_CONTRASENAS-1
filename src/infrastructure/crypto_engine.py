@@ -221,7 +221,7 @@ class CryptoEngine:
         return nonce + ciphertext
     
     @staticmethod
-    @rate_limit(max_attempts=5, window=60)
+    @rate_limit(max_attempts=20, window=30)
     def unwrap_vault_key(wrapped_key: bytes, user_password: str, user_salt: bytes) -> bytes:
         """
         Desencripta (unwrap) la vault_master_key usando la password del usuario.

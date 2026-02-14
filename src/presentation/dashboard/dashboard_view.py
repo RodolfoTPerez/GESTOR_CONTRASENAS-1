@@ -559,7 +559,7 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                 self.unit_auth_fails.set_value(f"{f_count} ATTEMPTS", percent=min(100, f_count * 20), color_name="critical" if f_count > 5 else "info")
 
             if hasattr(self, 'unit_auth_last'):
-                l_val = stats['last_suspicious'].upper()
+                l_val = str(stats.get('last_suspicious') or "--").upper()
                 self.unit_auth_last.set_value(f"{l_val} {'✅' if l_val == '--' else '⚠️'}", color_name="info" if l_val == "--" else "warning")
 
             # 2e. New Auth Metrics (Filling Grid)

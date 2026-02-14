@@ -72,7 +72,10 @@ class HyperRealVaultCore(QWidget):
             cursor = db.execute("SELECT value FROM meta WHERE key = 'instance_name'")
             row = cursor.fetchone()
             if row:
-                self.vault_name = row[0].upper()
+                name_val = row[0]
+                if isinstance(name_val, bytes):
+                    name_val = name_val.decode('utf-8', errors='ignore')
+                self.vault_name = str(name_val).upper()
         except Exception:
             pass
 

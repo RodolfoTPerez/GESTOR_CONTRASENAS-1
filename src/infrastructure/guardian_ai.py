@@ -261,7 +261,7 @@ class GuardianAI:
         for r in records:
             pwd = r.get("secret", "")
             service = r.get("service", "Desconocido")
-            owner = r.get("owner_name", "").upper()
+            owner = str(r.get("owner_name") or "").upper()
             created_at_str = r.get("created_at", "") # Fecha de creación (proxy de antigüedad)
             
             is_my_record = (current_user_upper == owner)

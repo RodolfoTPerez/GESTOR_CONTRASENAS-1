@@ -25,3 +25,13 @@ if missing:
 # Validación de seguridad: No permitir valores por defecto en producción
 if "your-project-id" in os.getenv("SUPABASE_URL", ""):
      raise ValueError("Configure SUPABASE_URL con su proyecto real en .env")
+
+# --- SENIOR SECURITY: DEBUG PROTECTION (Kill Switch) ---
+DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+
+if DEBUG_MODE and ENVIRONMENT == "production":
+    raise RuntimeError(
+        "CRITICAL SECURITY RISK: DEBUG=True is enabled in a PRODUCTION environment. "
+        "The application will not start until DEBUG is set to False in your .env file."
+    )

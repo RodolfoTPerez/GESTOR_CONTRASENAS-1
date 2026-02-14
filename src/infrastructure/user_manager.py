@@ -3,7 +3,7 @@ from typing import Any, Optional, Tuple, Dict
 from supabase import create_client
 from config.config import SUPABASE_URL, SUPABASE_KEY
 from src.infrastructure.security.device_fingerprint import get_hwid
-from src.infrastructure.crypto_engine import CryptoEngine
+from src.infrastructure.crypto_engine import CryptoEngine, rate_limit
 import base64, secrets, hashlib, re, logging
 
 class UserManager:
@@ -139,6 +139,7 @@ class UserManager:
         pwd_hash, salt_out = CryptoEngine.hash_user_password(password, salt_bin)
         return pwd_hash, salt_out.hex()
 
+    @rate_limit(max_attempts=5, window=60)
     def verify_password(self, password: str, salt: Any, stored_hash: str) -> bool:
         """Verifica una contraseña delegando en el motor centralizado CryptoEngine."""
         if not salt or not stored_hash:
@@ -889,6 +890,22 @@ class UserManager:
             self.logger.error(f"Error in update_user_password: {e}")
             return False, str(e)
 
+    def update_bulk_vault_access(self, user_id: str, vault_key_map: list) -> bool:
+        """
+        Updates multiple vault access records in Supabase.
+        vault_key_map: List of tuples/dicts [(vault_id, wrapped_key_hex), ...]
+        """
+        try:
+            for v_id, w_key_hex in vault_key_map:
+                self.supabase.table("vault_access")\
+                    .update({"wrapped_master_key": w_key_hex})\
+                    .eq("user_id", user_id)\
+                    .eq("vault_id", v_id).execute()
+            return True
+        except Exception as e:
+            self.logger.error(f"Error in update_bulk_vault_access: {e}")
+            return False
+
     def toggle_user_status(self, user_id: int, current_status: bool):
         """Activa o desactiva un usuario en Supabase."""
         try:
@@ -916,7 +933,7 @@ class UserManager:
             if not user_res.data:
                 return False, "Usuario no encontrado."
             
-            target_username = user_res.data[0]["username"].upper().replace(" ", "")
+            target_username = str(user_res.data[0].get("username") or "").upper().replace(" ", "")
             target_role = user_res.data[0]["role"]
             
             if target_role == "admin":

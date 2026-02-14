@@ -151,6 +151,7 @@ class SyncManager:
                 v_id = acc.get("vault_id")
                 w_key = acc.get("wrapped_master_key")
                 if v_id and w_key:
+                    logger.info(f"[Sync] Persisting access to vault {v_id}")
                     self.sm.save_vault_access_local(v_id, bytes.fromhex(w_key) if isinstance(w_key, str) else w_key)
         except Exception as e: logger.error(f"Error syncing keys: {e}")
 
@@ -166,7 +167,10 @@ class SyncManager:
         return stats
 
     def _pull_cloud_to_local(self):
-        user = self.sm.current_user.upper()
+        user = (self.sm.current_user or "").upper()
+        if not user:
+            logger.warning("[Sync] Skip pull: No active user context.")
+            return 0
         remote = self.client.get_records(self.table, f"select=*&or=(is_private.eq.0,owner_name.eq.{user})")
         local_raw = self.sm.get_all_encrypted()
         local_cloud_ids = {s.get("cloud_id") for s in local_raw if s.get("cloud_id")}
@@ -197,7 +201,7 @@ class SyncManager:
             "id": c_id, "service": rec["service"], "username": rec["username"],
             "secret": self._encode_secret(rec["nonce_blob"], rec["secret_blob"]),
             "notes": rec.get("notes"), "updated_at": int(time.time()),
-            "owner_name": (rec.get("owner_name") or self.sm.current_user).upper(),
+            "owner_name": str(rec.get("owner_name") or self.sm.current_user or "unknown").upper(),
             "is_private": rec.get("is_private", 0), "deleted": rec.get("deleted", 0),
             "vault_id": rec.get("vault_id") or self.sm.current_vault_id
         }
@@ -245,14 +249,13 @@ class SyncManager:
             
             sessions = {}
             for log in raw_logs:
-                user = log.get("user_name", "???").upper()
+                user = str(log.get("user_name") or "???").upper()
                 device = log.get("device_info", "Unknown Device")
                 
                 # FIX: Ignorar si el 'device_info' parece ser un mensaje de error o detalle (por logs corruptos anteriores)
                 # Si el campo tiene espacios largos o palabras de acción, lo descartamos de la agrupación de sesiones
                 if len(device) > 30 or "Sesión" in device or "Login" in device:
                     continue
-
                 session_key = f"{user}@{device}"
                 
                 if session_key not in sessions:
@@ -304,7 +307,10 @@ class SyncManager:
             # 2. Verificar si hay un evento KICK reciente para este dispositivo
             import socket
             hostname = socket.gethostname()
-            kicks = self.client.get_records(self.audit_table, f"select=id&action=eq.KICK&user_name=eq.{self.sm.current_user.upper()}&device_info=eq.{hostname}&limit=1")
+            curr_user = (self.sm.current_user or "").upper()
+            if not curr_user: return False
+            
+            kicks = self.client.get_records(self.audit_table, f"select=id&action=eq.KICK&user_name=eq.{curr_user}&device_info=eq.{hostname}&limit=1")
             return len(kicks) > 0
             
         except Exception as e:

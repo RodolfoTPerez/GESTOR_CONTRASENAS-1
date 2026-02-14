@@ -1,6 +1,6 @@
 import sqlite3
 import logging
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from src.infrastructure.database.db_manager import DBManager
 
 logger = logging.getLogger(__name__)
@@ -66,15 +66,60 @@ class UserRepository:
             if isinstance(wrapped_key, str):
                 wrapped_key = bytes.fromhex(wrapped_key)
             
+            # 1. Update legacy users table (Active Vault)
             self.db.execute(
                 "UPDATE users SET vault_id = ?, wrapped_vault_key = ? WHERE UPPER(username) = ?",
                 (vault_id, sqlite3.Binary(wrapped_key), str(username).upper())
             )
+            
+            # 2. Update new vault_access table (Multi-Vault Support)
+            self.save_vault_access(vault_id, wrapped_key)
+            
             self.db.commit()
             return True
         except Exception as e:
             logger.error(f"Error updating vault access for '{username}': {e}")
             return False
+
+    def save_vault_access(self, vault_id: str, wrapped_key: bytes, access_level: str = "member") -> bool:
+        """Persists or updates access to a specific vault."""
+        try:
+            import time
+            if isinstance(wrapped_key, str):
+                wrapped_key = bytes.fromhex(wrapped_key)
+            
+            self.db.execute(
+                """INSERT OR REPLACE INTO vault_access 
+                (vault_id, wrapped_master_key, access_level, updated_at, synced) 
+                VALUES (?, ?, ?, ?, 1)""",
+                (vault_id, sqlite3.Binary(wrapped_key), access_level, int(time.time()))
+            )
+            self.db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving vault access for '{vault_id}': {e}")
+            return False
+
+    def get_vault_access(self, vault_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieves access details for a specific vault."""
+        try:
+            cur = self.db.execute("SELECT * FROM vault_access WHERE vault_id = ?", (vault_id,))
+            row = cur.fetchone()
+            if not row: return None
+            return dict(zip([d[0] for d in cur.description], row))
+        except Exception as e:
+            logger.error(f"Error reading vault access for '{vault_id}': {e}")
+            return None
+
+    def get_all_vault_accesses(self) -> List[Dict[str, Any]]:
+        """Lists all vaults the user has access to."""
+        try:
+            cur = self.db.execute("SELECT * FROM vault_access")
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row)) for row in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching all vault accesses: {e}")
+            return []
 
     def update_protected_key(self, username: str, protected_key: bytes) -> bool:
         """Saves a re-encrypted Personal Key (SVK) to the local database."""

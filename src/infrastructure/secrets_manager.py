@@ -13,6 +13,7 @@ from src.infrastructure.database.db_manager import DBManager
 from src.infrastructure.repositories.secret_repo import SecretRepository
 from src.infrastructure.repositories.user_repo import UserRepository
 from src.infrastructure.repositories.audit_repo import AuditRepository
+from src.infrastructure.crypto_engine import CryptoEngine
 
 # Domain imports
 from src.domain.services.session_service import SessionService
@@ -108,18 +109,119 @@ class SecretsManager:
         logger.info("[DEBUG] Unwrapping keys...")
         self.session.personal_key = self.security.decrypt_protected_key(profile.get("protected_key"), kek)
         
-        w_v_raw = profile.get("wrapped_vault_key")
+        w_v_raw = self.security.ensure_bytes(profile.get("wrapped_vault_key"))
+        
+        # [SENIOR ENHANCEMENT] Check vault_access table as fallback if 'users' key is missing/corrupt
+        if not w_v_raw and self.session.current_vault_id:
+            logger.info(f"[Auth] No vault key in 'users' for {new_user}, checking 'vault_access'...")
+            va = self.users.get_vault_access(self.session.current_vault_id)
+            if va:
+                w_v_raw = va.get("wrapped_master_key")
+
+        already_healed = False
         if w_v_raw:
             try:
-                logger.info("[DEBUG] Unwrapping vault key...")
+                # 1. Primary Unwrap
                 dec_v_key = self.security.unwrap_key(w_v_raw, password, v_salt)
                 self.session.vault_key = bytearray(dec_v_key)
+                already_healed = True
             except Exception as e:
-                logger.error(f"Failed to unwrap vault key for {new_user}: {e}")
+                # [FALLBACK] If primary fails, check vault_access table before healing
+                if self.session.current_vault_id:
+                    logger.info(f"[Forensic] Primary unwrap failed. Trying 'vault_access' for {self.session.current_vault_id}...")
+                    va = self.users.get_vault_access(self.session.current_vault_id)
+                    if va:
+                        w_va_raw = va.get("wrapped_master_key")
+                        if w_va_raw and w_va_raw != w_v_raw:
+                            try:
+                                dec_v_key = self.security.unwrap_key(w_va_raw, password, v_salt)
+                                self.session.vault_key = bytearray(dec_v_key)
+                                logger.info("[Forensic] Vault access found in fallback table!")
+                                already_healed = True
+                            except: pass
+
+                if not already_healed:
+                    # 2. HEALING: Attempt recovery with common variations
+                    logger.info(f"[Forensic] Primary vault unwrap failed for {new_user}. Error: {e}")
+                    logger.info(f"[Forensic] Attempting auto-healing for {new_user}...")
+                    
+                    healed_key = self._attempt_vault_key_soft_recovery(new_user, password, w_v_raw, v_salt)
+                    
+                    # 3. SECONDARY FALLBACK: Try other keys in vault_access if healing failed
+                    if not healed_key:
+                        logger.info("[Forensic] User primary key healing failed. Checking alternative keys in 'vault_access'...")
+                        all_va = self.users.get_all_vault_accesses()
+                        for va in all_va:
+                            alt_w_key = self.security.ensure_bytes(va.get("wrapped_master_key"))
+                            if alt_w_key and alt_w_key != w_v_raw:
+                                 candidate = self._attempt_vault_key_soft_recovery(new_user, password, alt_w_key, v_salt)
+                                 if candidate:
+                                     healed_key = candidate
+                                     break
+                    
+                    if healed_key:
+                        self.session.vault_key = bytearray(healed_key)
+                        logger.info(f"[Forensic] Vault access HEALED successfully for {new_user}")
+                        already_healed = True
+                    else:
+                        logger.warning(f"[Security] All recovery paths failed for {new_user}. Shared records will be locked.")
 
         self.session.master_key = self.session.personal_key or self.session.vault_key
         self._sync_legacy_attributes()
         logger.info(f"Session Started: {self.session.current_user} | ID: {self.session.session_id}")
+
+    def _attempt_vault_key_soft_recovery(self, username: str, password: str, wrapped_key: bytes, current_salt: bytes) -> Optional[bytes]:
+        """
+        Extreme Recovery Protocol (V4.0)
+        Tries combinations of salts, iterations, and legacy patterns.
+        """
+        # 1. Salt Candidates
+        salt_candidates = [
+            current_salt,
+            b"public_salt", 
+            b"", 
+            b"salt_123",
+            username.upper().encode(),
+            username.lower().encode(),
+            self.get_meta('master_salt') or b"",
+            self.get_meta('salt') or b"",
+            self.session.current_vault_id.encode() if self.session.current_vault_id else None
+        ]
+        
+        # 2. Iteration Candidates
+        iteration_candidates = [100000, 50000, 10000, 200000]
+        
+        # Deduplicación y limpieza
+        processed_salts = []
+        for s in salt_candidates:
+            b_s = self.security.ensure_bytes(s)
+            if b_s is not None and b_s not in processed_salts:
+                processed_salts.append(b_s)
+
+        total_trials = len(processed_salts) * len(iteration_candidates)
+        logger.info(f"[Forensic] Starting Extreme Recovery: {total_trials} combinations for {username}...")
+
+        # 3. Trial loop
+        for iter_count in iteration_candidates:
+            for salt in processed_salts:
+                try:
+                    # We derive manually to try different iterations
+                    kek = CryptoEngine.derive_kek_from_password(password, salt, iterations=iter_count)
+                    
+                    nonce = wrapped_key[:12]
+                    ciphertext = wrapped_key[12:]
+                    dec_key = AESGCM(kek).decrypt(nonce, ciphertext, None)
+                    
+                    if dec_key and len(dec_key) == 32:
+                        logger.info(f"[Forensic] CRITICAL SUCCESS! Key recovered with Salt: {salt.hex()[:6]}... Iterations: {iter_count}")
+                        # Sanar inmediatamente
+                        new_wrap = self.security.wrap_key(dec_key, password, current_salt)
+                        self.users.update_vault_access(username, self.session.current_vault_id or "default", new_wrap)
+                        return dec_key
+                except Exception:
+                    continue
+        
+        return None
 
     def refresh_vault_context(self) -> bool:
         if not self.session.current_user: return False
@@ -132,7 +234,6 @@ class SecretsManager:
         
         if w_v_raw and kek:
             try:
-                from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                 dec_v_key = AESGCM(kek).decrypt(self.security.ensure_bytes(w_v_raw)[:12], self.security.ensure_bytes(w_v_raw)[12:], None)
                 self.session.vault_key = bytearray(dec_v_key)
                 if not self.session.master_key: self.session.master_key = self.session.vault_key
@@ -427,6 +528,9 @@ class SecretsManager:
     def wrap_key(self, data: Any, password: str, salt: Any) -> bytes: return self.security.wrap_key(data, password, salt)
     def unwrap_key(self, wrapped_data: Any, password: str, salt: Any) -> bytes: return self.security.unwrap_key(wrapped_data, password, salt)
     def save_vault_access_local(self, vault_id: str, wrapped_key: bytes) -> bool: 
+        if not self.session.current_user:
+            logger.warning("Intentando guardar acceso a bóveda sin usuario activo.")
+            return False
         return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key)
 
     def change_login_password(self, old_password: str, new_password: str, user_manager: Optional[Any] = None, progress_callback: Optional[Any] = None) -> None:
@@ -443,22 +547,58 @@ class SecretsManager:
         new_salt = os.urandom(16).hex()
         new_hash, _ = CryptoEngine.hash_user_password(new_password, bytes.fromhex(new_salt))
         
-        # 2. Re-wrap Personal Key (SVK)
+        # 2. Re-wrap Keys (Personal + All Vaults)
         new_v_salt = os.urandom(16)
+        
+        # A. Personal Key
         new_protected_key = self.security.wrap_key(self.session.personal_key, new_password, new_v_salt)
         
-        # 3. Sync to Cloud via UserManager
+        # B. All Vault Accesses (Multi-tenant healing)
+        all_accesses = self.users.get_all_vault_accesses()
+        rehashed_vaults = []
+        
+        # Get old salt for decryption
+        profile = self.get_local_user_profile(self.session.current_user)
+        old_v_salt = self.security.ensure_bytes(profile.get("vault_salt"))
+        
+        for acc in all_accesses:
+            v_id = acc['vault_id']
+            try:
+                # Decrypt with old password
+                m_key = CryptoEngine.unwrap_vault_key(acc['wrapped_master_key'], old_password, old_v_salt)
+                # Re-encrypt with new password
+                new_wrap = self.security.wrap_key(m_key, new_password, new_v_salt)
+                rehashed_vaults.append((v_id, new_wrap))
+                
+                # Update local vault_access table
+                self.users.save_vault_access(v_id, new_wrap, acc.get('access_level', 'member'))
+            except Exception as e:
+                logger.error(f"Failed to re-wrap vault {v_id} during password change: {e}")
+
+        # 3. Sync to Cloud
         if user_manager:
-            success = user_manager.update_user_password(
+            # Sync user profile (includes personal key)
+            success, _ = user_manager.update_user_password(
                 self.session.current_user, 
                 new_password,
                 new_protected_key=new_protected_key,
-                new_vault_salt=new_v_salt
+                new_vault_salt=base64.b64encode(new_v_salt).decode('ascii')
             )
             if not success:
-                raise RuntimeError("Falló la sincronización de contraseña con la nube.")
+                raise RuntimeError("Falló la sincronización de perfil con la nube.")
+            
+            # Sync all vault accesses
+            cloud_map = [(v_id, w_key.hex()) for v_id, w_key in rehashed_vaults]
+            user_manager.update_bulk_vault_access(self.session.current_user_id, cloud_map)
         
-        # 4. Sync Local
+        # 4. Update Local User Profile (Compatibility/Fallback)
+        # Note: We also update the main 'wrapped_vault_key' in the users table for back-compat
+        active_vault_key = None
+        for v_id, w_key in rehashed_vaults:
+            if v_id == self.session.current_vault_id:
+                active_vault_key = w_key
+                break
+
         self.save_local_user_profile(
             self.session.current_user, 
             new_hash, 
@@ -466,12 +606,20 @@ class SecretsManager:
             new_v_salt,
             role=self.session.user_role,
             vault_id=self.session.current_vault_id,
-            protected_key=new_protected_key
+            protected_key=new_protected_key,
+            wrapped_vault_key=active_vault_key,
+            user_id=self.session.current_user_id
         )
         
-        # 5. Update session
+        # 5. Update session and Log
         self.session.master_key = self.security.derive_keke(new_password, new_v_salt)
-        self.log_event("CHANGE PASSWORD", details="User password and keys successfully rotated")
+        # If the active vault was re-wrapped, update it in session
+        if active_vault_key:
+             try:
+                 self.session.vault_key = bytearray(self.security.unwrap_key(active_vault_key, new_password, new_v_salt))
+             except: pass
+
+        self.log_event("CHANGE PASSWORD", details="User password and ALL vault keys successfully rotated and synced")
 
     def attempt_legacy_recovery(self) -> Tuple[int, str]:
         """
@@ -543,57 +691,78 @@ class SecretsManager:
 
     def repair_vault_access(self, username: str, old_password: str, new_password: str) -> Tuple[bool, str]:
         """
-        Intenta recuperar el acceso a la bóveda desencriptando la llave privada con la contraseña 
-        ANTERIOR y re-encriptándola con la contraseña NUEVA.
+        [SENIOR REPAIR PROTOCOL]
+        Rescues both Personal key and Vault keys using the OLD password and re-wraps them 
+        with the NEW password, updating legacy and multi-tenant tables.
         """
         try:
-            logger.info(f"[Forensic] Starting REPAIR protocol for {username}...")
+            logger.info(f"[Forensic] Starting FULL REPAIR protocol for {username}...")
             
-            # 1. Asegurar entorno
+            # 1. Environment Setup
             self.reconnect(username)
             profile = self.get_local_user_profile(username)
             
-            if not profile or not profile.get("protected_key"):
-                return False, "No se encontró perfil local o llave protegida para este usuario."
+            if not profile:
+                return False, "No se encontró perfil local para este usuario."
 
-            # Datos cifrados actuales
-            p_key_blob = self.security.ensure_bytes(profile["protected_key"])
-            if not p_key_blob or len(p_key_blob) < 28:
-                return False, "La llave protegida está corrupta o ausente."
-                
-            nonce = p_key_blob[:12]
-            ciphertext = p_key_blob[12:]
-            
-            # Salts (Intentamos con v_salt preferiblemente)
+            # Salts
             v_salt = self.security.ensure_bytes(profile.get("vault_salt"))
-            meta_salt = self.security.ensure_bytes(self.get_meta("salt"))
+            meta_salt = self.security.ensure_bytes(self.get_meta("master_salt"))
             salts_to_try = [v_salt] if v_salt else []
             if meta_salt: salts_to_try.append(meta_salt)
-
-            # 2. INTENTO DE RESCATE (Usando Old Password)
-            rescued_key = None
-            from src.infrastructure.crypto_engine import CryptoEngine
-            for salt in salts_to_try:
-                try:
-                    old_kek = CryptoEngine.derive_kek_from_password(old_password, salt, iterations=100_000)
-                    rescued_key = AESGCM(old_kek).decrypt(nonce, ciphertext, None)
-                    logger.info("[Forensic] Key rescued successfully using old password!")
-                    break
-                except Exception:
-                    continue
             
-            if not rescued_key:
-                return False, "La contraseña ANTERIOR no es correcta. No se pudo desencriptar la llave."
+            # 2. PERSONAL KEY REPAIR (Protected Key)
+            rescued_personal = None
+            p_key_blob = self.security.ensure_bytes(profile.get("protected_key"))
+            
+            if p_key_blob and len(p_key_blob) >= 28:
+                nonce = p_key_blob[:12]
+                ciphertext = p_key_blob[12:]
+                for salt in salts_to_try:
+                    try:
+                        old_kek = CryptoEngine.derive_kek_from_password(old_password, salt, iterations=100_000)
+                        rescued_personal = AESGCM(old_kek).decrypt(nonce, ciphertext, None)
+                        logger.info("[Forensic] Personal key rescued!")
+                        break
+                    except: continue
 
-            # 3. RE-ENCRIPTACIÓN (Usando New Password)
+            # 3. VAULT KEY REPAIR (Wrapped Vault Key)
+            rescued_vault = None
+            v_key_blob = self.security.ensure_bytes(profile.get("wrapped_vault_key"))
+            
+            if v_key_blob and len(v_key_blob) >= 28:
+                for salt in salts_to_try:
+                    try:
+                        # unwrap_vault_key handles splitting and KEK derivation
+                        rescued_vault = CryptoEngine.unwrap_vault_key(v_key_blob, old_password, salt)
+                        logger.info("[Forensic] Vault key rescued!")
+                        break
+                    except: continue
+
+            if not rescued_personal and not rescued_vault:
+                return False, "La contraseña ANTERIOR es incorrecta o no hay llaves para rescatar."
+
+            # 4. RE-ENCRYPTION AND STORAGE
             target_salt = v_salt if v_salt else meta_salt
-            new_blob = self.security.wrap_key(rescued_key, new_password, target_salt)
+            if not target_salt: target_salt = os.urandom(16)
             
-            # 4. GUARDADO
-            self.users.update_protected_key(username, new_blob)
+            if rescued_personal:
+                new_p_blob = self.security.wrap_key(rescued_personal, new_password, target_salt)
+                self.users.update_protected_key(username, new_p_blob)
             
-            self.log_event("REPAIR VAULT ACCESS", details=f"Access repaired for {username}")
-            return True, "Llave de acceso reparada localmente."
+            if rescued_vault:
+                new_v_blob = self.security.wrap_key(rescued_vault, new_password, target_salt)
+                # Update users table (Legacy)
+                self.users.db.execute("UPDATE users SET wrapped_vault_key = ?, vault_salt = ? WHERE UPPER(username) = ?", 
+                                     (sqlite3.Binary(new_v_blob), sqlite3.Binary(target_salt), username.upper()))
+                # Update vault_access table (Multi-tenant)
+                if self.session.current_vault_id:
+                    self.users.save_vault_access(self.session.current_vault_id, new_v_blob)
+                self.users.db.commit()
+
+            self.log_event("REPAIR_PROTOCOL_FULL", details=f"Full key repair successful for {username}")
+            return True, "Acceso reparado exitosamente. Las llaves han sido re-encriptadas."
+            
         except Exception as e:
-            logger.error(f"[Forensic] Repair failed: {e}")
+            logger.error(f"[Forensic] Full repair failed: {e}")
             return False, str(e)

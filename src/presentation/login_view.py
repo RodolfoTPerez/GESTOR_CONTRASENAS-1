@@ -415,13 +415,9 @@ class LoginView(QMainWindow):
                     return
                 self.logger.info("[DEBUG] Password verification SUCCESS.")
 
-            try:
-                self.user_manager.sm.set_active_user(u, p)
-                if is_offline:
-                    from src.presentation.notifications.notification_manager import Notifications
-                    Notifications.show_toast(self, "MODO OFFLINE", "Conectado mediante caché local. Los cambios no se sincronizarán hasta detectar internet.", "🔌", "#f59e0b")
-            except Exception as se:
-                self.logger.warning(f"Login Setup minor error: {se}")
+            if is_offline:
+                from src.presentation.notifications.notification_manager import Notifications
+                Notifications.show_toast(self, "MODO OFFLINE", "Conectado mediante caché local. Los cambios no se sincronizarán hasta detectar internet.", "🔌", "#f59e0b")
 
             # Login sin 2FA - Solo usuario y contraseña
             self.user_manager.sm.log_event("LOGIN_WITHOUT_2FA", details="2FA desactivado - Login solo con contraseña")
@@ -436,6 +432,9 @@ class LoginView(QMainWindow):
                 "totp_secret": sec,
                 "password_hash": prof.get("password_hash"),
                 "salt": prof.get("salt"),
+                "vault_salt": prof.get("vault_salt"),
+                "protected_key": prof.get("protected_key"),
+                "wrapped_vault_key": prof.get("wrapped_vault_key"),
                 "vault_id": prof.get("vault_id"),
                 "vault_name": prof.get("vault_name"), 
                 "id": prof.get("id")

@@ -36,6 +36,15 @@ class DBManager:
 
     def _check_schema(self) -> None:
         try:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS vault_access (
+                    vault_id TEXT PRIMARY KEY,
+                    wrapped_master_key BLOB,
+                    access_level TEXT DEFAULT 'member',
+                    updated_at INTEGER,
+                    synced INTEGER DEFAULT 1
+                )
+            """)
             self.conn.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value BLOB)")
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
