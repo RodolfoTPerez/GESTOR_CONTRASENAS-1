@@ -395,11 +395,11 @@ class LoginView(QMainWindow):
 
             if not prof.get("active", False):
                 if prof.get("error") == "DEVICE_MISMATCH":
-                    self.user_manager.sm.log_event("LOGIN_BLOCKED", details="Intento desde hardware no vinculado", status="FAILURE")
+                    self.user_manager.sm.log_event("LOGIN_BLOCKED", details="Intento desde hardware no vinculado", status="FAILURE", user_name=u, user_id=prof.get("id"))
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_ACCESS_FORBIDDEN, 
                         MESSAGES.LOGIN.TEXT_DEVICE_MISMATCH)
                 else:
-                    self.user_manager.sm.log_event("LOGIN_BLOCKED", details="Intento en cuenta suspendida/inactiva", status="FAILURE")
+                    self.user_manager.sm.log_event("LOGIN_BLOCKED", details="Intento en cuenta suspendida/inactiva", status="FAILURE", user_name=u, user_id=prof.get("id"))
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_ACCESS_BLOCKED, MESSAGES.LOGIN.TEXT_ACCOUNT_SUSPENDED)
                 return
 
@@ -409,7 +409,7 @@ class LoginView(QMainWindow):
                 if not self.user_manager.verify_password(p, prof["salt"], prof["password_hash"]):
                     self.logger.info("[DEBUG] Password verification FAILED.")
                     self.failed_attempts += 1
-                    self.user_manager.sm.log_event("LOGIN_FAIL", details=f"Password incorrecto (Intento {self.failed_attempts})", status="FAILURE")
+                    self.user_manager.sm.log_event("LOGIN_FAIL", details=f"Password incorrecto (Intento {self.failed_attempts})", status="FAILURE", user_name=u, user_id=prof.get("id"))
                     if self.failed_attempts >= 5: self.locked_until = time.time() + 60
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_ACCESS_DENIED, MESSAGES.LOGIN.TEXT_INVALID_CREDS)
                     return
@@ -420,11 +420,11 @@ class LoginView(QMainWindow):
                 Notifications.show_toast(self, "MODO OFFLINE", "Conectado mediante caché local. Los cambios no se sincronizarán hasta detectar internet.", "🔌", "#f59e0b")
 
             # Login sin 2FA - Solo usuario y contraseña
-            self.user_manager.sm.log_event("LOGIN_WITHOUT_2FA", details="2FA desactivado - Login solo con contraseña")
+            self.user_manager.sm.log_event("LOGIN_WITHOUT_2FA", details="2FA desactivado - Login solo con contraseña", user_name=u, user_id=prof.get("id"))
             sec = None
 
             # LOG FINAL DE EXITO
-            self.user_manager.sm.log_event("LOGIN", details=f"Sesin iniciada: {u}")
+            self.user_manager.sm.log_event("LOGIN", details=f"Sesin iniciada: {u}", user_name=u, user_id=prof.get("id"))
             
             user_data = {
                 "username": u, 

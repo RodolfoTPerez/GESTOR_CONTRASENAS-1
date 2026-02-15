@@ -212,6 +212,10 @@ class DashboardUI:
                 border-bottom-left-radius: 30px;
                 border-bottom-right-radius: 30px;
             }
+            #dashboard_header[user_mode="true"] {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 @ghost_white_5, stop:1 @ghost_white_10);
+                border-bottom: 2px solid @ghost_white_10;
+            }
         """))
         
         h_shadow = QGraphicsDropShadowEffect(self.header)
@@ -563,15 +567,17 @@ class DashboardUI:
             self.btn_go_ai = mk_quick_btn("🛡️", "INTEGRIDAD", "ai")
             self.btn_go_sync = mk_quick_btn("🔄", "SINCRONIZAR", "success")
             self.btn_go_services = mk_quick_btn("💎", "SERVICIOS", "primary")
+            quick_btns = [self.btn_go_vault, self.btn_go_activity, self.btn_go_monitor, self.btn_go_ai, self.btn_go_sync, self.btn_go_services]
         else:
             self.btn_go_vault = mk_quick_btn("🔐", "BÓVEDA", "primary")
             self.btn_go_activity = mk_quick_btn("📜", "HISTORIAL", "ai_sec")
-            self.btn_go_monitor = mk_quick_btn("📡", "MONITOR", "primary")
+            # MONITOR hidden for non-admin
             self.btn_go_ai = mk_quick_btn("🧠", "ESCANEO AI", "ai")
             self.btn_go_sync = mk_quick_btn("🔄", "SINCRONIZAR", "success")
             self.btn_go_services = mk_quick_btn("➕", "SERVICIOS", "primary")
+            quick_btns = [self.btn_go_vault, self.btn_go_activity, self.btn_go_ai, self.btn_go_sync, self.btn_go_services]
         
-        for b in [self.btn_go_vault, self.btn_go_activity, self.btn_go_monitor, self.btn_go_ai, self.btn_go_sync, self.btn_go_services]: al.addWidget(b)
+        for b in quick_btns: al.addWidget(b)
         
         grid.addWidget(self.actions_card, 3, 0, 1, 12)
 
@@ -587,17 +593,10 @@ class DashboardUI:
         
         scroll.setWidget(container)
         
-        # PANEL LATERAL DE DETALLES (Dashboard)
-        self.side_panel_dashboard = QWidget()
-        self.side_panel_dashboard.setObjectName("side_detail_panel")
-        self.side_panel_dashboard.setFixedWidth(400)
-        self.side_panel_dashboard.hide()
-        
-        # Estructura Horizontal: [Contenido, Panel Lateral]
+        # Estructura Horizontal (Full Width)
         h_box = QHBoxLayout()
         h_box.setContentsMargins(0,0,0,0); h_box.setSpacing(0)
         h_box.addWidget(scroll, 1)
-        h_box.addWidget(self.side_panel_dashboard, 0)
         
         # Estructura Vertical Final de la Página
         page_layout = QVBoxLayout(page)

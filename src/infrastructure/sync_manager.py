@@ -152,7 +152,7 @@ class SyncManager:
                 w_key = acc.get("wrapped_master_key")
                 if v_id and w_key:
                     logger.info(f"[Sync] Persisting access to vault {v_id}")
-                    self.sm.save_vault_access_local(v_id, bytes.fromhex(w_key) if isinstance(w_key, str) else w_key)
+                    self.sm.save_vault_access_local(v_id, bytes.fromhex(w_key) if isinstance(w_key, str) else w_key, synced=1)
         except Exception as e: logger.error(f"Error syncing keys: {e}")
 
     def _push_local_to_cloud(self):
@@ -214,8 +214,27 @@ class SyncManager:
         if row: self._upload_record(self._row_to_dict(row))
 
     def _row_to_dict(self, row):
-        # Mapeo básico de row a dict según esquema de secrets_manager
-        return {"id": row[0], "service": row[1], "username": row[2], "secret_blob": row[3], "nonce_blob": row[4], "owner_name": row[8], "is_private": row[13], "deleted": row[5], "vault_id": row[14], "cloud_id": row[15]}
+        """
+        Mapeo robusto de row (tuple de SQLite) a dict (Supabase Payload).
+        Basado en el esquema de DBManager v3.0:
+        0:id, 1:service, 2:username, 3:secret, 4:nonce, 5:integrity, 6:notes, 
+        7:updated, 8:deleted, 9:owner_name, 10:synced, 11:is_private, 12:vault_id,
+        13:key_type, 14:cloud_id, 15:owner_id
+        """
+        return {
+            "id": row[14] if len(row) > 14 and row[14] else None, # cloud_id
+            "service": row[1],
+            "username": row[2],
+            "secret_blob": row[3],
+            "nonce_blob": row[4],
+            "notes": row[6],
+            "owner_name": str(row[9]).upper() if len(row) > 9 else "UNKNOWN",
+            "is_private": row[11] if len(row) > 11 else 0,
+            "deleted": row[8] if len(row) > 8 else 0,
+            "vault_id": row[12] if len(row) > 12 else self.sm.current_vault_id,
+            "updated_at": row[7] if len(row) > 7 else int(time.time()),
+            "owner_id": row[15] if len(row) > 15 else None
+        }
 
     def sync_audit_logs(self):
         if not self.check_internet(): return
@@ -236,6 +255,16 @@ class SyncManager:
                 })
             self.client.post_records(self.audit_table, payload)
             self.sm.mark_audit_logs_as_synced()
+
+    def get_global_audit_logs(self, limit=500):
+        """Obtiene los logs de auditoría globales del nodo central (ADMIN ONLY)."""
+        if not self.check_internet(): return []
+        try:
+            # Ordenar por timestamp descendente
+            return self.client.get_records(self.audit_table, f"order=timestamp.desc&limit={limit}")
+        except Exception as e:
+            logger.error(f"Error fetching global audit logs: {e}")
+            return []
 
     def get_active_sessions(self):
         """Obtiene y agrupa los latidos recientes por dispositivo para mostrar sesiones únicas."""

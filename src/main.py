@@ -144,7 +144,6 @@ def start_app():
             dashboard.show()
             dashboard.raise_()
             dashboard.activateWindow()
-            login_window.close()
             logger.info("[DEBUG] Login flow completed successfully.")
         except ValueError as ve:
             # Error de negocio/lógica (como el cambio de Master Key)

@@ -714,14 +714,19 @@ class DashboardTableManager:
             for l in all_logs:
                 act = str(l.get("action", "")).upper()
                 msg = str(l).upper()
+                svc = str(l.get("service", "")).upper()
+                det = str(l.get("details", "")).upper()
+                
+                # Search across action, service, details and the whole log string
+                full_context = f"{act} {svc} {det} {msg}"
                 
                 if filter_mode == "ALL" or filter_mode == "GLOBAL": 
                     filtered_logs.append(l)
-                elif filter_mode == "AUTH" and any(x in act or x in msg for x in ["LOGIN", "LOGOUT", "SESSION", "2FA", "ACCESS", "AUTH"]): 
+                elif filter_mode == "AUTH" and any(x in full_context for x in ["LOGIN", "LOGOUT", "SESSION", "2FA", "ACCESS", "AUTH", "HEARTBEAT", "CONEXION"]): 
                     filtered_logs.append(l)
-                elif filter_mode == "SECRETS" and any(x in act or x in msg for x in ["CREATE", "UPDATE", "READ", "DELETE", "EXPORT", "SECRET", "VAULT", "AGREGAR", "EDITAR", "BORRAR", "VER", "ELIMINACION"]): 
+                elif filter_mode == "SECRETS" and any(x in full_context for x in ["CREATE", "UPDATE", "READ", "DELETE", "EXPORT", "SECRET", "VAULT", "AGREGAR", "EDITAR", "BORRAR", "VER", "ELIMINACION", "PASSWORD", "CONTRASENA", "LLAVE", "KEY"]): 
                     filtered_logs.append(l)
-                elif filter_mode == "ADMIN" and any(x in act or x in msg for x in ["ADMIN", "USER", "ROLE", "POLICY", "SETTINGS", "PURGE", "REVOKE"]): 
+                elif filter_mode == "ADMIN" and any(x in full_context for x in ["ADMIN", "USER", "ROLE", "POLICY", "SETTINGS", "PURGE", "REVOKE", "KICK", "BLOCK", "PERM", "GRANT", "USER_MANAGEMENT"]): 
                     filtered_logs.append(l)
             
             all_logs = filtered_logs

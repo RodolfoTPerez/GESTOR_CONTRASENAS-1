@@ -291,6 +291,16 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         # Historial Sync
         if hasattr(self, 'btn_refresh_audit_cloud'): self.btn_refresh_audit_cloud.clicked.connect(self._on_sync_audit)
 
+        # Activity Log Module Filters (Oro Puro Fix)
+        if hasattr(self, 'btn_mod_all'): self.btn_mod_all.clicked.connect(lambda: self._load_table_audit())
+        if hasattr(self, 'btn_mod_auth'): self.btn_mod_auth.clicked.connect(lambda: self._load_table_audit())
+        if hasattr(self, 'btn_mod_sec'): self.btn_mod_sec.clicked.connect(lambda: self._load_table_audit())
+        if hasattr(self, 'btn_mod_adm'): self.btn_mod_adm.clicked.connect(lambda: self._load_table_audit())
+        if hasattr(self, 'btn_mod_global'): self.btn_mod_global.clicked.connect(lambda: self._load_table_audit())
+
+        # Recent Activity Card Filters (Synchronization Fix)
+        # [UI CLEANUP] Side panel removed, filters preserved only in Activity Module.
+
         # Password Health Action
         if hasattr(self, 'btn_fix_health'): self.btn_fix_health.clicked.connect(self._on_fix_password_health)
 
@@ -902,15 +912,19 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         if hasattr(self, 'btn_repair_vault_dashboard'): self.btn_repair_vault_dashboard.setVisible(is_admin) # Crítico: Solo el Admin repara llaves
         
         # 5. Global Activity Filters (Only Admin)
-        if hasattr(self, 'btn_filter_global'): self.btn_filter_global.setVisible(is_admin)
         if hasattr(self, 'btn_mod_global'): self.btn_mod_global.setVisible(is_admin)
+        
+        # 6. Dashboard Metrics (Private for non-admin)
+        if hasattr(self, 'unit_auth_sessions'): self.unit_auth_sessions.setVisible(is_admin)
+        if hasattr(self, 'unit_auth_admin'): self.unit_auth_admin.setVisible(is_admin)
         
         # 4. Mensaje Informativo
         if not is_admin:
             logger.info(f"Restricted Mode Active: User '{self.current_username}' operating under limited protocol.")
             # Cambiamos el color de la barra superior para indicar modo usuario (Style via QSS property)
-            self.topbar.setProperty("user_mode", True)
-            self.topbar.style().unpolish(self.topbar); self.topbar.style().polish(self.topbar)
+            if hasattr(self, 'header'):
+                self.header.setProperty("user_mode", True)
+                self.header.style().unpolish(self.header); self.header.style().polish(self.header)
 
 
     def _update_internet_realtime(self):
@@ -1218,6 +1232,17 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         """Acceso rápido a la gestión de usuarios."""
         from src.presentation.user_management_dialog import UserManagementDialog
         dlg = UserManagementDialog(self.user_manager, self.current_username, parent=self)
+        dlg.exec_()
+
+    def _open_monitor_sessions(self):
+        """Open the Active Sessions presence monitor (Admin Only Gate)"""
+        if self.current_role.lower() != "admin":
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.critical(self, "Acceso Denegado", "No tienes permisos de Administrador para monitorear sesiones globales.")
+            return
+
+        from src.presentation.sessions_dialog import SessionsDialog
+        dlg = SessionsDialog(self.sync_manager, current_username=self.current_username, parent=self)
         dlg.exec_()
 
     def _on_dash_search_return(self):

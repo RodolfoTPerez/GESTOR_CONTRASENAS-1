@@ -1,116 +1,172 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-REPARACIÓN OFICIAL: Sincronización de Tabla vault_access
-========================================================
-Este script utiliza la infraestructura oficial de PassGuardian para:
-1. Desencriptar la llave de bóveda actual del usuario.
-2. Asegurar que la tabla 'vault_access' esté correctamente poblada.
-3. Garantizar compatibilidad con el nuevo sistema de múltiples bóvedas.
+COMPARAR DATOS: RODOLFO vs KIKI
+================================
+
+Compara qué diferencias hay entre los datos de ambos usuarios.
 """
 
 import sys
-import os
-import logging
-import getpass
+import sqlite3
 from pathlib import Path
 
-# Configurar logging básico
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
+print("="*70)
+print("🔍 COMPARACIÓN: RODOLFO vs KIKI")
+print("="*70)
+print()
 
-# Asegurar que el path del proyecto esté incluido
-PROJECT_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# Función para analizar usuario
+def analyze_user(username):
+    db_path = Path(f"data/vault_{username.lower()}.db")
+    
+    if not db_path.exists():
+        return None
+    
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+    
+    # Obtener columnas de la tabla secrets
+    cursor.execute("PRAGMA table_info(secrets)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    # Contar secretos
+    cursor.execute("SELECT COUNT(*) FROM secrets")
+    total_secrets = cursor.fetchone()[0]
+    
+    # Ver si tienen columna version
+    has_version = 'version' in columns
+    
+    # Si tiene version, ver cuántos tienen valor
+    version_count = 0
+    if has_version:
+        cursor.execute("SELECT COUNT(*) FROM secrets WHERE version IS NOT NULL AND version != ''")
+        version_count = cursor.fetchone()[0]
+    
+    # Ver un secreto de ejemplo
+    cursor.execute("SELECT * FROM secrets LIMIT 1")
+    sample_secret = cursor.fetchone()
+    
+    conn.close()
+    
+    return {
+        'username': username,
+        'columns': columns,
+        'has_version': has_version,
+        'total_secrets': total_secrets,
+        'version_count': version_count,
+        'sample_secret': sample_secret
+    }
 
-try:
-    from src.infrastructure.database.db_manager import DBManager
-    from src.infrastructure.repositories.user_repo import UserRepository
-    from src.infrastructure.crypto_engine import CryptoEngine
-except ImportError as e:
-    print(f"❌ Error: No se pudo importar la infraestructura de la app. {e}")
-    sys.exit(1)
+# Analizar RODOLFO
+print("👤 Analizando RODOLFO...")
+rodolfo = analyze_user("RODOLFO")
 
-def run_fix():
+if rodolfo:
+    print(f"✅ Base de datos encontrada")
+    print(f"   Total secretos: {rodolfo['total_secrets']}")
+    print(f"   Tiene columna 'version': {rodolfo['has_version']}")
+    if rodolfo['has_version']:
+        print(f"   Secretos con version: {rodolfo['version_count']}")
+    print(f"   Columnas totales: {len(rodolfo['columns'])}")
+else:
+    print("❌ No se encontró base de datos")
+
+print()
+
+# Analizar KIKI
+print("👤 Analizando KIKI...")
+kiki = analyze_user("KIKI")
+
+if kiki:
+    print(f"✅ Base de datos encontrada")
+    print(f"   Total secretos: {kiki['total_secrets']}")
+    print(f"   Tiene columna 'version': {kiki['has_version']}")
+    if kiki['has_version']:
+        print(f"   Secretos con version: {kiki['version_count']}")
+    print(f"   Columnas totales: {len(kiki['columns'])}")
+else:
+    print("❌ No se encontró base de datos")
+
+print()
+print("="*70)
+print("📊 COMPARACIÓN")
+print("="*70)
+print()
+
+if rodolfo and kiki:
+    # Comparar columnas
+    print("🔍 Diferencias en columnas:")
+    
+    rodolfo_cols = set(rodolfo['columns'])
+    kiki_cols = set(kiki['columns'])
+    
+    only_rodolfo = rodolfo_cols - kiki_cols
+    only_kiki = kiki_cols - rodolfo_cols
+    
+    if only_rodolfo:
+        print(f"  Solo RODOLFO tiene: {', '.join(only_rodolfo)}")
+    
+    if only_kiki:
+        print(f"  Solo KIKI tiene: {', '.join(only_kiki)}")
+    
+    if not only_rodolfo and not only_kiki:
+        print("  ✅ Ambos tienen las mismas columnas")
+    
+    print()
+    
+    # Comparar secretos
+    print("📊 Comparación de datos:")
+    print(f"  RODOLFO: {rodolfo['total_secrets']} secretos")
+    print(f"  KIKI: {kiki['total_secrets']} secretos")
+    
+    if rodolfo['has_version'] and kiki['has_version']:
+        print()
+        print(f"  RODOLFO con 'version': {rodolfo['version_count']}/{rodolfo['total_secrets']}")
+        print(f"  KIKI con 'version': {kiki['version_count']}/{kiki['total_secrets']}")
+    
+    print()
+    
+    # Conclusión
     print("="*70)
-    print("🛠️  REPARACIÓN OFICIAL: Sincronización vault_access")
+    print("💡 EXPLICACIÓN DEL PROBLEMA")
     print("="*70)
     print()
-
-    username = "RODOLFO" # Puedes cambiar esto por un input(prefijo)
-    username_clean = username.upper().replace(" ", "")
     
-    # 1. Conectar usando DBManager (Esto asegura que la tabla vault_access exista)
-    print(f"🔍 Inicializando base de datos para {username_clean}...")
-    db = DBManager(username)
-    user_repo = UserRepository(db)
+    if rodolfo['version_count'] == 0 and kiki['version_count'] > 0:
+        print("🎯 PROBLEMA IDENTIFICADO:")
+        print()
+        print("  Los secretos de RODOLFO NO tienen valores en 'version',")
+        print("  pero los secretos de KIKI SÍ tienen.")
+        print()
+        print("  Cuando KIKI intenta sincronizar, envía el campo 'version'")
+        print("  a Supabase, pero Supabase no tiene esa columna.")
+        print()
+        print("  RODOLFO no tiene el problema porque sus secretos")
+        print("  tienen 'version' = NULL o vacío, entonces NO se envía.")
+        print()
+    elif rodolfo['total_secrets'] == 0:
+        print("🎯 PROBLEMA IDENTIFICADO:")
+        print()
+        print("  RODOLFO no tiene secretos para sincronizar,")
+        print("  por eso no falla el sync.")
+        print()
+        print("  KIKI tiene secretos con el campo 'version',")
+        print("  y al intentar sincronizarlos, Supabase rechaza")
+        print("  porque no tiene esa columna.")
+        print()
+    else:
+        print("🔍 Ambos usuarios tienen estructura similar.")
+        print("   El problema podría ser otro.")
     
-    # 2. Obtener perfil actual
-    profile = user_repo.get_profile(username_clean)
-    if not profile:
-        print(f"❌ No se encontró el perfil de {username_clean} en la DB local.")
-        db.close()
-        return
-
-    v_id = profile.get("vault_id")
-    v_salt = profile.get("vault_salt")
-    w_v_key = profile.get("wrapped_vault_key")
-
-    print(f"📊 Estado Actual:")
-    print(f"   Vault ID: {v_id}")
-    print(f"   Vault Salt: {'✅ Presente' if v_salt else '❌ Ausente'}")
-    print(f"   Wrapped Key: {'✅ Presente' if w_v_key else '❌ Ausente'}")
+    print("✅ SOLUCIÓN:")
+    print()
+    print("  Agregar la columna 'version' en Supabase:")
+    print()
+    print("  ALTER TABLE secrets ADD COLUMN version TEXT;")
     print()
 
-    if not v_salt or not w_v_key:
-        print("❌ Error: Faltan componentes críticos para desencriptar la llave.")
-        db.close()
-        return
+else:
+    print("⚠️  No se pudieron comparar ambos usuarios")
 
-    # 3. Validar llave
-    print("🔐 Ingrese su contraseña de PassGuardian para validar:")
-    password = getpass.getpass("Contraseña: ")
-
-    try:
-        print("\n🔓 Intentando unwrap oficial...")
-        # Asegurar bytes
-        if isinstance(v_salt, (str, bytes)):
-            if isinstance(v_salt, str) and v_salt.startswith("\\x"):
-                 v_salt_bytes = bytes.fromhex(v_salt[2:])
-            elif isinstance(v_salt, str):
-                 try: v_salt_bytes = bytes.fromhex(v_salt)
-                 except: v_salt_bytes = v_salt.encode()
-            else:
-                 v_salt_bytes = v_salt
-        
-        # Usar CryptoEngine oficial
-        # Nota: unwrap_vault_key requiere wrapped_key, password, salt
-        # Devuelve la master_key plana de 32 bytes
-        vault_key_plain = CryptoEngine.unwrap_vault_key(w_v_key, password, v_salt_bytes)
-        
-        print("✅ Llave desencriptada con éxito.")
-        
-        # 4. Actualizar tabla vault_access usando el repositorio oficial
-        # UserRepository.update_vault_access ahora escribe en ambas tablas y respeta el esquema
-        print("💾 Persistiendo en vault_access (Esquema Oficial)...")
-        success = user_repo.update_vault_access(username_clean, v_id, w_v_key)
-        
-        if success:
-            print("\n" + "="*70)
-            print("🎉 REPARACIÓN COMPLETADA CON ÉXITO")
-            print("="*70)
-            print("1. La tabla 'vault_access' ha sido sincronizada.")
-            print("2. Se mantiene compatibilidad con el esquema legacy.")
-            print("3. El sistema de sincronización podrá leer esta llave correctamente.")
-        else:
-            print("❌ Error al guardar en la base de datos.")
-
-    except Exception as e:
-        print(f"\n❌ Error de Autenticación o Corrupción: {e}")
-        print("Verifique que la contraseña sea la correcta.")
-
-    finally:
-        db.close()
-
-if __name__ == "__main__":
-    run_fix()
+print("="*70)

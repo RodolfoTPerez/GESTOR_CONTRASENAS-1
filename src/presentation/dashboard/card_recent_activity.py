@@ -32,11 +32,11 @@ class RecentActivityCard(VultraxBaseCard):
         self.btn_filter_all.setCheckable(True)
         self.btn_filter_all.setChecked(True)
         
-        self.btn_filter_vault = QPushButton()
-        self.btn_filter_vault.setCheckable(True)
+        self.btn_filter_secrets = QPushButton()
+        self.btn_filter_secrets.setCheckable(True)
         
-        self.btn_filter_security = QPushButton()
-        self.btn_filter_security.setCheckable(True)
+        self.btn_filter_auth = QPushButton()
+        self.btn_filter_auth.setCheckable(True)
         
         self.btn_filter_admin = QPushButton()
         self.btn_filter_admin.setCheckable(True)
@@ -50,7 +50,7 @@ class RecentActivityCard(VultraxBaseCard):
         self.filter_group = QButtonGroup(self)
         self.filter_group.setExclusive(True)
 
-        self.filters = [self.btn_filter_all, self.btn_filter_vault, self.btn_filter_security, self.btn_filter_admin, self.btn_filter_global]
+        self.filters = [self.btn_filter_all, self.btn_filter_secrets, self.btn_filter_auth, self.btn_filter_admin, self.btn_filter_global]
         for b in self.filters:
             b.setCursor(Qt.PointingHandCursor)
             b.setFixedHeight(24)
@@ -83,8 +83,8 @@ class RecentActivityCard(VultraxBaseCard):
         try:
             self.lbl_title.setText(MESSAGES.CARDS.RECENT_ACTIVITY)
             self.btn_filter_all.setText(MESSAGES.CARDS.FILTER_ALL)
-            self.btn_filter_vault.setText(MESSAGES.CARDS.FILTER_VAULT)
-            self.btn_filter_security.setText(MESSAGES.CARDS.FILTER_SECURITY)
+            self.btn_filter_secrets.setText(MESSAGES.CARDS.FILTER_VAULT)
+            self.btn_filter_auth.setText(MESSAGES.CARDS.FILTER_SECURITY)
             self.btn_filter_admin.setText(MESSAGES.CARDS.FILTER_ADMIN)
             self.btn_filter_global.setText(MESSAGES.CARDS.FILTER_GLOBAL)
         except Exception as e:

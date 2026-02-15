@@ -55,7 +55,7 @@ class SecretsManager:
         self.session_id = self.session.session_id
         self.kek_candidates = self.session.kek_candidates
 
-    # --- DATABASE & META ---
+    # --- DATABASEDO & META ---
     def get_meta(self, key: str) -> Optional[str]: return self.users.get_meta(key)
     def set_meta(self, key: str, value: Any) -> None: self.users.set_meta(key, value)
     
@@ -138,6 +138,10 @@ class SecretsManager:
                                 self.session.vault_key = bytearray(dec_v_key)
                                 logger.info("[Forensic] Vault access found in fallback table!")
                                 already_healed = True
+                                # [HEAL] Update primary users table so next login is normal
+                                try:
+                                    self.users.update_vault_access(new_user, self.session.current_vault_id, w_va_raw, synced=1)
+                                except: pass
                             except: pass
 
                 if not already_healed:
@@ -445,8 +449,11 @@ class SecretsManager:
         self.db.commit()
 
     # --- AUDIT ---
-    def log_event(self, action: str, service: str = "-", status: str = "SUCCESS", details: str = "-", **kwargs: Any) -> None:
-        self.audit.log_event(self.session.current_user, self.session.current_user_id, action, service, status, details, **kwargs)
+    def log_event(self, action: str, service: str = "-", status: str = "SUCCESS", details: str = "-", 
+                  user_name: Optional[str] = None, user_id: Optional[str] = None, **kwargs: Any) -> None:
+        u = user_name if user_name else self.session.current_user
+        uid = user_id if user_id else self.session.current_user_id
+        self.audit.log_event(u, uid, action, service, status, details, **kwargs)
 
     def get_audit_logs(self, limit: int = 500) -> List[Dict[str, Any]]:
         return self.audit.get_logs(self.session.current_user, self.session.user_role, limit)
@@ -527,11 +534,11 @@ class SecretsManager:
 
     def wrap_key(self, data: Any, password: str, salt: Any) -> bytes: return self.security.wrap_key(data, password, salt)
     def unwrap_key(self, wrapped_data: Any, password: str, salt: Any) -> bytes: return self.security.unwrap_key(wrapped_data, password, salt)
-    def save_vault_access_local(self, vault_id: str, wrapped_key: bytes) -> bool: 
+    def save_vault_access_local(self, vault_id: str, wrapped_key: bytes, synced: int = 0) -> bool: 
         if not self.session.current_user:
             logger.warning("Intentando guardar acceso a bóveda sin usuario activo.")
             return False
-        return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key)
+        return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key, synced=synced)
 
     def change_login_password(self, old_password: str, new_password: str, user_manager: Optional[Any] = None, progress_callback: Optional[Any] = None) -> None:
         """
@@ -561,35 +568,57 @@ class SecretsManager:
         profile = self.get_local_user_profile(self.session.current_user)
         old_v_salt = self.security.ensure_bytes(profile.get("vault_salt"))
         
+        # Prepare cloud fallback data to heal inconsistencies
+        cloud_accesses = []
+        if user_manager and self.session.current_user_id:
+            cloud_accesses = user_manager.get_cloud_vault_accesses(self.session.current_user_id)
+
         for acc in all_accesses:
             v_id = acc['vault_id']
             try:
                 # Decrypt with old password
-                m_key = CryptoEngine.unwrap_vault_key(acc['wrapped_master_key'], old_password, old_v_salt)
+                try:
+                    m_key = CryptoEngine.unwrap_vault_key(acc['wrapped_master_key'], old_password, old_v_salt)
+                except Exception as unwrap_err:
+                    # FALLBACK: Try fetching from cloud if local unwrap fails
+                    # This heals cases where local was updated but cloud sync failed previously.
+                    logger.warning(f"Local unwrap failed for vault {v_id}: {unwrap_err}. Searching in cloud...")
+                    cloud_match = next((c for c in cloud_accesses if c['vault_id'] == v_id), None)
+                    if cloud_match:
+                        # Cloud record might have different keys ('wrapped_master_key' vs 'wrapped_vault_key')
+                        c_key = cloud_match.get('wrapped_master_key') or cloud_match.get('wrapped_vault_key')
+                        if c_key:
+                            m_key = CryptoEngine.unwrap_vault_key(c_key, old_password, old_v_salt)
+                            logger.info(f"Successfully recovered vault {v_id} from cloud during password change.")
+                        else: raise unwrap_err
+                    else: raise unwrap_err
+
                 # Re-encrypt with new password
                 new_wrap = self.security.wrap_key(m_key, new_password, new_v_salt)
-                rehashed_vaults.append((v_id, new_wrap))
-                
-                # Update local vault_access table
-                self.users.save_vault_access(v_id, new_wrap, acc.get('access_level', 'member'))
+                rehashed_vaults.append((v_id, new_wrap, acc.get('access_level', 'member')))
             except Exception as e:
                 logger.error(f"Failed to re-wrap vault {v_id} during password change: {e}")
 
-        # 3. Sync to Cloud
+        # 3. Sync to Cloud FIRST (to ensure we don't break local if bank fails)
         if user_manager:
             # Sync user profile (includes personal key)
+            # [FIX] new_protected_key MUST be Base64-encoded to be JSON serializable
             success, _ = user_manager.update_user_password(
                 self.session.current_user, 
                 new_password,
-                new_protected_key=new_protected_key,
+                new_protected_key=base64.b64encode(new_protected_key).decode('ascii'),
                 new_vault_salt=base64.b64encode(new_v_salt).decode('ascii')
             )
             if not success:
                 raise RuntimeError("Falló la sincronización de perfil con la nube.")
             
             # Sync all vault accesses
-            cloud_map = [(v_id, w_key.hex()) for v_id, w_key in rehashed_vaults]
+            cloud_map = [(v_id, w_key.hex()) for v_id, w_key, lvl in rehashed_vaults]
             user_manager.update_bulk_vault_access(self.session.current_user_id, cloud_map)
+        
+        # 4. Update Local Repository ONLY after cloud success
+        for v_id, new_wrap, lvl in rehashed_vaults:
+             self.users.save_vault_access(v_id, new_wrap, lvl, synced=1) # Mark as synced
         
         # 4. Update Local User Profile (Compatibility/Fallback)
         # Note: We also update the main 'wrapped_vault_key' in the users table for back-compat

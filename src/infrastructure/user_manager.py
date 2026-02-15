@@ -182,12 +182,21 @@ class UserManager:
         except Exception as e:
              self.logger.warning(f"Could not verify DB context: {e}")
         
+        # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
+        # 1. Always stage cloud credentials in vault_access if different or new
+        # Initialize these variables here, as they are used before the new logic.
+        vault_salt_bytes = None
+        protected_key_bytes = None
+        wrapped_v_bytes = None
+
+        # Obtener el perfil local una sola vez para las comparaciones de preservación
+        local_profile = self.sm.get_local_user_profile(username_clean)
+
         # 1. Manejar Vault Salt (UNIFICADO)
         vault_salt_bytes = self._normalize_to_bytes(cloud_profile.get("vault_salt"))
         
         if not vault_salt_bytes:
             # Si en la nube no hay salt, intentamos REUTILIZAR el local existente para no romper las llaves
-            local_profile = self.sm.get_local_user_profile(username_clean)
             if local_profile and local_profile.get("vault_salt"):
                 vault_salt_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
                 self.logger.info(f"Preservando Salt local existente para {username_clean}.")
@@ -195,9 +204,6 @@ class UserManager:
                 # Si sigue siendo None (usuario nuevo sin salt en ningún lado), generamos uno
                 vault_salt_bytes = secrets.token_bytes(16)
                 self.logger.info(f"Generando Salt nuevo para {username_clean}.")
-
-        # Obtener el perfil local una sola vez para las comparaciones de preservación
-        local_profile = self.sm.get_local_user_profile(username_clean)
 
         # 2. Manejar Protected Key (SVK) - [PRESERVACIÓN CRÍTICA UNIFICADA]
         protected_key_bytes = self._normalize_to_bytes(cloud_profile.get("protected_key"))
@@ -209,7 +215,6 @@ class UserManager:
         
         # 3. Manejar Wrapped Vault Key (Equipo) - [PRESERVACIÓN CRÍTICA]
         wrapped_v_key = cloud_profile.get("wrapped_vault_key")
-        wrapped_v_bytes = None
         
         if wrapped_v_key:
             # Puede venir en 3 formatos:
@@ -248,7 +253,30 @@ class UserManager:
         if not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
             wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
             self.logger.info("Preservando Wrapped Vault Key local.")
-        
+
+        # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
+        # 1. Always stage cloud credentials in vault_access if different or new
+        if wrapped_v_bytes and cloud_profile.get("vault_id"):
+            # We save this as a fallback in the vault_access table
+            self.logger.info(f"[Sync] Staging cloud vault key for {cloud_profile.get('vault_id')} in vault_access table.")
+            self.sm.users.save_vault_access(cloud_profile.get("vault_id"), wrapped_v_bytes)
+
+        # 2. DECISION: Do we trust the local primary credentials?
+        # If we have a local key/salt pair, we keep them in the 'users' table (Primary).
+        # This allows local resets to work immediately. set_active_user will handle fallbacks.
+        if local_profile and local_profile.get("wrapped_vault_key") and local_profile.get("vault_salt"):
+            local_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
+            local_s_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
+            
+            if wrapped_v_bytes and local_v_bytes != wrapped_v_bytes:
+                self.logger.info("Preserving local Primary Vault Key (Cloud key staged in vault_access).")
+                wrapped_v_bytes = local_v_bytes
+                vault_salt_bytes = local_s_bytes # Salt must match the key
+        elif not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
+            wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
+            vault_salt_bytes = self.sm._ensure_bytes(local_profile.get("vault_salt"))
+            self.logger.info("Preserving local Vault Key (Cloud sent nothing).")
+            
         # 4. Manejar TOTP Secret - [DESCIFRADO ROBUSTO CON SYSTEM KEY]
         totp_raw = cloud_profile.get("totp_secret")
         totp_clean = None
@@ -588,8 +616,12 @@ class UserManager:
         
         try:
             # 1. Validación de existencia y límites
+            check = self.validate_user_access(username_clean)
+            if check and check.get("exists"):
+                return False, f"El usuario '{username_clean}' ya está registrado en el sistema."
+
             if self.get_user_count() >= 5:
-                return False, "Límite de usuarios alcanzado."
+                return False, "Límite de usuarios alcanzado (Máx 5)."
             
             # 2. Caso Especial: BOOTSTRAPPING (Primer Admin)
             is_first_admin = (role == "admin" and self.get_user_count() == 0)
@@ -637,16 +669,25 @@ class UserManager:
             
             if res.data and current_v_id and protected_key_bytes:
                 new_user_id = res.data[0]['id']
-                # Registrar acceso oficial a la bóveda
+                # [RESILIENT FLOW] Registrar acceso oficial a la bóveda con fallback cromático
                 try:
-                    self.supabase.table("vault_access").upsert({
+                    payload_va = {
                         "user_id": new_user_id,
                         "vault_id": current_v_id,
                         "wrapped_master_key": protected_key_bytes.hex()
-                    }).execute()
+                    }
+                    self.supabase.table("vault_access").upsert(payload_va).execute()
                 except Exception as va_error:
-                    self.logger.error(f"Could not register vault access: {va_error}")
-                    # No fallamos el registro total porque el usuario ya se creó, pero lanzamos advertencia
+                    err_str = str(va_error)
+                    if "wrapped_master_key" in err_str.lower():
+                        try:
+                            self.logger.info("Retrying vault_access with 'wrapped_vault_key' fallback...")
+                            payload_va["wrapped_vault_key"] = payload_va.pop("wrapped_master_key")
+                            self.supabase.table("vault_access").upsert(payload_va).execute()
+                        except Exception as va_error2:
+                            self.logger.error(f"Critical: Could not register vault access (v2): {va_error2}")
+                    else:
+                        self.logger.error(f"Could not register vault access: {va_error}")
 
             # 6. ESTABILIZACIÓN LOCAL INMEDIATA
             if res.data:
@@ -657,10 +698,11 @@ class UserManager:
 
             return True, f"Usuario {username_clean} configurado correctamente."
         except Exception as e:
+            err_str = str(e)
+            if "23505" in err_str or "already exists" in err_str.lower():
+                return False, f"Error: El usuario '{username_clean}' ya existe. Por favor, usa un nombre diferente."
             self.logger.error(f"Error in add_new_user: {e}")
-            return False, str(e)
-        except Exception as e:
-            return False, f"Error al crear usuario: {str(e)}"
+            return False, f"Fallo de Protocolo: {err_str}"
 
     def get_master_vault_id(self):
         """
@@ -742,9 +784,9 @@ class UserManager:
             return False, f"Error al crear invitación: {err_msg}"
 
     def get_invitations(self):
-        """Lista las invitaciones no utilizadas."""
+        """Lista todas las invitaciones."""
         try:
-            r = self.supabase.table("invitations").select("*").eq("used", False).execute()
+            r = self.supabase.table("invitations").select("*").order("created_at", desc=True).execute()
             return r.data or []
         except Exception:
             return []
@@ -817,12 +859,21 @@ class UserManager:
             if not success:
                 return False, msg
 
-            # 5. Marcar invitación como usada
+            # 5. Marcar invitación como usada (Resilient Flow)
             username_clean = str(username or "UNKNOWN").upper().replace(" ", "")
-            self.supabase.table("invitations").update({
-                "used": True,
-                "claimed_by": username_clean
-            }).eq("code", code).execute()
+            try:
+                self.supabase.table("invitations").update({
+                    "used": True,
+                    "claimed_by": username_clean
+                }).eq("code", code).execute()
+            except Exception as e:
+                err_str = str(e)
+                if "column" in err_str.lower() or "could not find" in err_str.lower():
+                    self.logger.warning(f"register_with_invitation: Legacy schema in 'invitations'. Skipping 'claimed_by'.")
+                    # Reintento sin el campo conflictivo
+                    self.supabase.table("invitations").update({"used": True}).eq("code", code).execute()
+                else:
+                    raise e
 
             # 6. Vincular vault_id en el perfil del usuario si existe
             if vault_id:
@@ -838,6 +889,15 @@ class UserManager:
             return True, "Registro completado exitosamente con herencia de llaves."
         except Exception as e:
             return False, f"Error en el registro: {str(e)}"
+
+    def get_cloud_vault_accesses(self, user_id: str) -> list:
+        """Recupera todos los registros de acceso a bvedas desde la nube."""
+        try:
+            r = self.supabase.table("vault_access").select("*").eq("user_id", user_id).execute()
+            return r.data or []
+        except Exception as e:
+            self.logger.error(f"Error fetching cloud vault accesses: {e}")
+            return []
 
     def update_user_password(self, username, password, new_protected_key=None, new_vault_salt=None):
         """Actualiza la contraseña y salts del usuario en la nube."""

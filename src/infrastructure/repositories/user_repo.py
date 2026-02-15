@@ -60,7 +60,7 @@ class UserRepository:
         placeholders = ", ".join(["?"] * len(vals))
         self.db.execute(f"INSERT OR REPLACE INTO users ({', '.join(cols)}) VALUES ({placeholders})", tuple(vals))
         self.db.commit()
-    def update_vault_access(self, username: str, vault_id: str, wrapped_key: bytes) -> bool:
+    def update_vault_access(self, username: str, vault_id: str, wrapped_key: bytes, synced: int = 0) -> bool:
         try:
             # [FIX] Ensure wrapped_key is bytes
             if isinstance(wrapped_key, str):
@@ -73,7 +73,7 @@ class UserRepository:
             )
             
             # 2. Update new vault_access table (Multi-Vault Support)
-            self.save_vault_access(vault_id, wrapped_key)
+            self.save_vault_access(vault_id, wrapped_key, synced=synced)
             
             self.db.commit()
             return True
@@ -81,18 +81,26 @@ class UserRepository:
             logger.error(f"Error updating vault access for '{username}': {e}")
             return False
 
-    def save_vault_access(self, vault_id: str, wrapped_key: bytes, access_level: str = "member") -> bool:
-        """Persists or updates access to a specific vault."""
+    def save_vault_access(self, vault_id: str, wrapped_key: bytes, access_level: str = "member", synced: int = 0) -> bool:
+        """Persists or updates access to a specific vault with conflict resolution."""
         try:
             import time
             if isinstance(wrapped_key, str):
                 wrapped_key = bytes.fromhex(wrapped_key)
             
+            # [CONFLICT RESOLUTION]
+            # If we are trying to save a cloud record (synced=1), check if local has an unsynced one (synced=0)
+            if synced == 1:
+                local = self.get_vault_access(vault_id)
+                if local and local.get("synced") == 0:
+                    logger.info(f"Conflict: Unsynced local vault key for {vault_id} exists. Rejecting cloud overwrite.")
+                    return False
+            
             self.db.execute(
                 """INSERT OR REPLACE INTO vault_access 
                 (vault_id, wrapped_master_key, access_level, updated_at, synced) 
-                VALUES (?, ?, ?, ?, 1)""",
-                (vault_id, sqlite3.Binary(wrapped_key), access_level, int(time.time()))
+                VALUES (?, ?, ?, ?, ?)""",
+                (vault_id, sqlite3.Binary(wrapped_key), access_level, int(time.time()), synced)
             )
             self.db.commit()
             return True

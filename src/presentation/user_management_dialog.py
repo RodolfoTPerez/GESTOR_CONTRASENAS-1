@@ -361,9 +361,18 @@ class UserManagementDialog(QDialog):
         # REFRESCAR INVITACIONES
         invs = self.user_manager.get_invitations()
         self.inv_table.setRowCount(len(invs))
+        if self.inv_table.columnCount() < 4:
+            self.inv_table.setColumnCount(4)
+            self.inv_table.setHorizontalHeaderLabels([
+                MESSAGES.USERS.COL_CODE, MESSAGES.USERS.COL_ROLE, 
+                MESSAGES.USERS.COL_CREATED_BY, MESSAGES.USERS.COL_STATUS
+            ])
+
         for i, inv in enumerate(invs):
+            is_used = inv.get("used", False)
+            
             code_item = QTableWidgetItem(inv.get("code", "---"))
-            code_item.setForeground(Qt.yellow)
+            code_item.setForeground(QColor("#00FF00") if not is_used else QColor("#888888"))
             code_item.setTextAlignment(Qt.AlignCenter)
             self.inv_table.setItem(i, 0, code_item)
             
@@ -374,6 +383,15 @@ class UserManagementDialog(QDialog):
             creator_item = QTableWidgetItem(inv.get("created_by", "SYSTEM"))
             creator_item.setTextAlignment(Qt.AlignCenter)
             self.inv_table.setItem(i, 2, creator_item)
+
+            status_text = "ACTIVE" if not is_used else "USED"
+            status_item = QTableWidgetItem(status_text)
+            status_item.setTextAlignment(Qt.AlignCenter)
+            if not is_used:
+                status_item.setForeground(QColor("#FFFF00")) # Yellow for active
+            else:
+                status_item.setForeground(QColor("#FF4444")) # Red for used
+            self.inv_table.setItem(i, 3, status_item)
 
     def _on_reset_2fa(self, username):
         """Permite al admin eliminar el secreto 2FA dañado de un usuario."""
