@@ -182,7 +182,7 @@ class SyncManager:
                     logger.info(f"[Sync] Persisting access to vault {v_id}")
                     # [HEALING] If the current session has no vault key, it's likely a sync conflict 
                     # preventing recovery. We force the cloud key if the local unwrap failed.
-                    force_update = (self.sm.vault_key is None)
+                    force_update = (self.sm.current_user is not None and self.sm.vault_key is None)
                     if force_update:
                         logger.info(f"[Sync] Local vault key missing or broken. Forcing cloud key overwrite for {v_id}.")
                     
