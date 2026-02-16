@@ -91,25 +91,24 @@ class UserRepository:
         """Persists or updates access to a specific vault with conflict resolution."""
         try:
             import time
+            # [NUCLEAR SYNC FIX] 
+            # We no longer reject cloud overwrites. If the cloud (synced=1) has a key,
+            # we accept it as the source of truth to heal local corruption.
+            if synced == 1:
+                logger.info(f"Applying Cloud Master Key for vault {vault_id} (Forced Sync)")
+            
             if isinstance(wrapped_key, str):
                 wrapped_key = bytes.fromhex(wrapped_key)
             
-            # [CONFLICT RESOLUTION]
-            # If we are trying to save a cloud record (synced=1), check if local has an unsynced one (synced=0)
-            if synced == 1 and not force:
-                local = self.get_vault_access(vault_id)
-                if local and local.get("synced") == 0:
-                    logger.info(f"Conflict: Unsynced local vault key for {vault_id} exists. Rejecting cloud overwrite.")
-                    return False
-            
-            self.db.execute(
-                """INSERT OR REPLACE INTO vault_access 
-                (vault_id, wrapped_master_key, access_level, updated_at, synced) 
-                VALUES (?, ?, ?, ?, ?)""",
-                (vault_id, sqlite3.Binary(wrapped_key), access_level, int(time.time()), synced)
-            )
+            # Upsert logic
+            now = int(time.time())
+            self.db.execute("""
+                INSERT OR REPLACE INTO vault_access (vault_id, wrapped_master_key, access_level, updated_at, synced)
+                VALUES (?, ?, ?, ?, ?)
+            """, (vault_id, sqlite3.Binary(wrapped_key), access_level, now, synced))
             self.db.commit()
             return True
+
         except Exception as e:
             logger.error(f"Error saving vault access for '{vault_id}': {e}")
             return False

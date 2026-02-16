@@ -241,37 +241,29 @@ class CryptoEngine:
     def unwrap_vault_key(wrapped_key: bytes, user_password: str, user_salt: bytes) -> bytes:
         """
         Desencripta (unwrap) la vault_master_key usando la password del usuario.
-        
-        Args:
-            wrapped_key: La llave maestra encriptada (nonce + ciphertext)
-            user_password: Password del usuario para derivar la KEK
-            user_salt: Salt del usuario usado durante el wrap
-            
-        Returns:
-            bytes: vault_master_key original (32 bytes)
-            
-        Raises:
-            ValueError: Si la password es incorrecta o los datos están corruptos (InvalidTag)
+        [ULTRA RECOVERY] Soporta múltiples recuentos de iteraciones (1k, 10k, 100k y 600k).
         """
         if not isinstance(wrapped_key, bytes):
             raise TypeError("wrapped_key must be bytes")
         if len(wrapped_key) < CryptoEngine.NONCE_SIZE + CryptoEngine.KEY_SIZE:
             raise ValueError("wrapped_key is too short")
 
-        # 1. Derivar la KEK idéntica
-        kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, iterations=CryptoEngine.DEFAULT_ITERATIONS)
-        
-        # 2. Separar componentes (12 bytes nonce)
         nonce = wrapped_key[:CryptoEngine.NONCE_SIZE]
         ciphertext = wrapped_key[CryptoEngine.NONCE_SIZE:]
         
-        # 3. Descifrar con AES-GCM
-        try:
-            aes_gcm = AESGCM(kek)
-            return aes_gcm.decrypt(nonce, ciphertext, None)
-        except Exception:
-            # El error usual es InvalidTag si la password/kek no es la correcta
-            raise ValueError("Error de autenticación: El password o la llave de bóveda no coinciden.")
+        # Probar recuentos de iteraciones comunes (Standard, Ultra, Legacy y Forensic)
+        for iter_count in [100000, 600000, 10000, 1000]:
+            try:
+                kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, iterations=iter_count)
+                aes_gcm = AESGCM(kek)
+                return aes_gcm.decrypt(nonce, ciphertext, None)
+            except Exception:
+                continue
+                
+        # Si llegamos aquí, ninguno de los recuentos funcionó
+        raise ValueError("Error de autenticación: El password o la llave de bóveda no coinciden.")
+
+
     
     @staticmethod
     def compute_key_checksum(key: bytes) -> str:

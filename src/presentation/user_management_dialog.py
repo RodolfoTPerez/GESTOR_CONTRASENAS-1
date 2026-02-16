@@ -479,67 +479,19 @@ class UserManagementDialog(QDialog):
             progress.setValue(10)
             QApplication.processEvents()
             
-            # [FIX CORE] Generar nueva protected_key usando la Master Key del Admin y la Nueva Clave del Usuario
-            import secrets, base64
             try:
-                # Paso 1: Contar registros afectados (simulado o real)
-                progress.setLabelText(MESSAGES.USERS.PROG_ANALYZING)
-                progress.setValue(30)
-                QApplication.processEvents()
-                
-                # Contamos cuántos secretos "posee" este usuario en la DB local para el reporte
-                svc_count = 0
-                try:
-                    cur = self.user_manager.sm.conn.execute("SELECT COUNT(*) FROM secrets WHERE username LIKE ?", (username,))
-                    res = cur.fetchone()
-                    if res: svc_count = res[0]
-                except: pass
-                
-                progress.setValue(50)
-                progress.setLabelText(MESSAGES.USERS.PROG_GENERATING)
-                QApplication.processEvents()
-                
-                # 2. Generar nueva sal para el usuario y envolver llaves
-                new_vault_salt = secrets.token_bytes(16)
-                
-                new_protected_key = self.user_manager.sm.wrap_key(
-                    self.user_manager.sm.master_key, # La llave que abre los secretos
-                    new_pwd,                         # La nueva contraseña
-                    new_vault_salt                   # La nueva sal
-                )
-                
-                protected_key_b64 = base64.b64encode(new_protected_key).decode('ascii')
-                vault_salt_b64 = base64.b64encode(new_vault_salt).decode('ascii')
-                
-                progress.setValue(75)
-                progress.setLabelText(MESSAGES.USERS.PROG_SYNCING)
-                QApplication.processEvents()
-                
-                # 3. Enviar todo al backend
-                success, _ = self.user_manager.update_user_password(
+                # 1. Start unified reset protocol
+                self.user_manager.sm.admin_reset_user_identity(
                     username, 
                     new_pwd, 
-                    new_protected_key=protected_key_b64, 
-                    new_vault_salt=vault_salt_b64
+                    self.user_manager, 
+                    progress_callback=lambda c, t, s, e: progress.setValue(c)
                 )
-                
-                # [NEW] Also update vault_access in cloud for the user
-                if success and self.user_manager.sm.session.current_vault_id:
-                     # Get the re-encrypted key for the shared vault
-                     # Note: In admin reset, we use the admin's master_key to re-wrap for the user
-                     target_uid_res = self.user_manager.supabase.table("users").select("id").eq("username", username).execute()
-                     if target_uid_res.data:
-                         t_uid = target_uid_res.data[0]['id']
-                         v_id = self.user_manager.sm.session.current_vault_id
-                         self.user_manager.update_bulk_vault_access(t_uid, [(v_id, protected_key_b64)])
                 
                 progress.setValue(100)
                 progress.close()
-                
-                if success:
-                    PremiumMessage.success(self, MESSAGES.USERS.TITLE_SUCCESS, MESSAGES.USERS.TEXT_PW_UPDATED.format(username=username, count=svc_count))
-                else:
-                    PremiumMessage.error(self, MESSAGES.USERS.TITLE_ERROR, MESSAGES.USERS.ERR_CLOUD_UPDATE)
+                PremiumMessage.success(self, MESSAGES.USERS.TITLE_SUCCESS, MESSAGES.USERS.TEXT_PW_UPDATED.format(username=username, count=0))
+
             
             except Exception as e:
                 progress.close()
