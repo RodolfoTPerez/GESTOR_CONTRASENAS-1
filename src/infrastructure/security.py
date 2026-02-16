@@ -118,7 +118,8 @@ def verify_totp(secret: str, token: str) -> bool:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     # Derivar clave maestra
-    password = "MiClaveMaestra123!"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para demostración: ")
     key, salt = derive_master_key(password)
     logger.info(f"Derived master key: {base64.b64encode(key).decode()}")
     logger.info(f"Salt used: {base64.b64encode(salt).decode()}")

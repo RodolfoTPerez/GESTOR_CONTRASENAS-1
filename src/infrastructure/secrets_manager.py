@@ -97,8 +97,15 @@ class SecretsManager:
         if not v_salt or len(v_salt) < 16:
             logger.info("[DEBUG] No vault salt found, creating one...")
             v_salt = self._get_or_create_salt()
-            self.save_local_user_profile(new_user, profile["password_hash"], profile["salt"], v_salt,
-                                        role=self.session.user_role, vault_id=self.session.current_vault_id)
+            self.save_local_user_profile(
+                new_user, 
+                profile.get("password_hash") or "LEGACY", 
+                profile.get("salt") or "LEGACY", 
+                v_salt,
+                role=self.session.user_role, 
+                vault_id=self.session.current_vault_id,
+                user_id=profile.get("user_id")
+            )
 
         # Derive KEK
         logger.info("[DEBUG] Deriving KEK...")
@@ -170,7 +177,7 @@ class SecretsManager:
                     else:
                         logger.warning(f"[Security] All recovery paths failed for {new_user}. Shared records will be locked.")
 
-        self.session.master_key = self.session.personal_key or self.session.vault_key
+        self.session.master_key = self.session.personal_key or self.session.vault_key or kek
         self._sync_legacy_attributes()
         logger.info(f"Session Started: {self.session.current_user} | ID: {self.session.session_id}")
 
@@ -187,8 +194,10 @@ class SecretsManager:
             b"salt_123",
             username.upper().encode(),
             username.lower().encode(),
+            username.encode(),
             self.get_meta('master_salt') or b"",
             self.get_meta('salt') or b"",
+            self.get_meta('vault_salt') or b"",
             self.session.current_vault_id.encode() if self.session.current_vault_id else None
         ]
         
@@ -359,7 +368,7 @@ class SecretsManager:
                 
                 to_insert.append((
                     svc, usr, sqlite3.Binary(enc), sqlite3.Binary(nonce), batch_time,
-                    current_user, current_uid, integrity, notes, priv, current_vid
+                    current_user, current_uid, integrity, notes, priv, current_vid, None
                 ))
                 
                 existing_map.add(dupe_key) # Evitar duplicados dentro del lote
@@ -433,13 +442,13 @@ class SecretsManager:
                              integrity: str, notes: Optional[str] = None, deleted: int = 0, 
                              synced: int = 1, sid: Optional[int] = None, is_private: int = 0, 
                              owner_name: Optional[str] = None, vault_id: Optional[str] = None, 
-                             cloud_id: Optional[str] = None) -> None:
+                             cloud_id: Optional[str] = None, version: Optional[str] = None) -> None:
         data = {
             "service": service, "username": username, "secret": secret_blob, "nonce": nonce_blob,
             "integrity_hash": integrity, "notes": notes, "deleted": deleted, "synced": synced,
             "is_private": int(is_private or 0), "owner_name": str(owner_name or self.session.current_user).upper(),
             "vault_id": vault_id or self.session.current_vault_id, "cloud_id": cloud_id, 
-            "updated_at": int(time.time())
+            "version": version, "updated_at": int(time.time())
         }
         if sid: data["id"] = sid
         self.secrets.add_encrypted_direct(data)
@@ -578,19 +587,34 @@ class SecretsManager:
             try:
                 # Decrypt with old password
                 try:
-                    m_key = CryptoEngine.unwrap_vault_key(acc['wrapped_master_key'], old_password, old_v_salt)
+                    # [PRO] Use self.security.unwrap_key to handle type normalization (bytes/strings) automatically
+                    m_key = self.security.unwrap_key(acc['wrapped_master_key'], old_password, old_v_salt)
                 except Exception as unwrap_err:
-                    # FALLBACK: Try fetching from cloud if local unwrap fails
-                    # This heals cases where local was updated but cloud sync failed previously.
+                    # FALLBACK 1: Try healing with Cloud Salt (Phantom Salt Rescue)
                     logger.warning(f"Local unwrap failed for vault {v_id}: {unwrap_err}. Searching in cloud...")
-                    cloud_match = next((c for c in cloud_accesses if c['vault_id'] == v_id), None)
-                    if cloud_match:
-                        # Cloud record might have different keys ('wrapped_master_key' vs 'wrapped_vault_key')
-                        c_key = cloud_match.get('wrapped_master_key') or cloud_match.get('wrapped_vault_key')
-                        if c_key:
-                            m_key = CryptoEngine.unwrap_vault_key(c_key, old_password, old_v_salt)
-                            logger.info(f"Successfully recovered vault {v_id} from cloud during password change.")
-                        else: raise unwrap_err
+                    if user_manager:
+                        try:
+                            # Fetch latest profile from cloud to get the most recent vault_salt
+                            cloud_p = user_manager.validate_user_access(self.session.current_user)
+                            c_salt = self.security.ensure_bytes(cloud_p.get("vault_salt"))
+                            
+                            if c_salt and c_salt != old_v_salt:
+                                logger.info(f"Phantom Salt detected for {v_id}. Retrying with Cloud Salt...")
+                                m_key = self.security.unwrap_key(acc['wrapped_master_key'], old_password, c_salt)
+                                logger.info(f"Success! Vault {v_id} recovered using Cloud Salt.")
+                                old_v_salt = c_salt # Update for subsequent vaults
+                            else:
+                                raise unwrap_err
+                        except Exception:
+                            # FALLBACK 2: Try fetching alternate wrapped keys from cloud
+                            cloud_match = next((c for c in cloud_accesses if c['vault_id'] == v_id), None)
+                            if cloud_match:
+                                c_key = cloud_match.get('wrapped_master_key') or cloud_match.get('wrapped_vault_key')
+                                if c_key:
+                                    m_key = self.security.unwrap_key(c_key, old_password, old_v_salt)
+                                    logger.info(f"Success! Vault {v_id} recovered from cloud key records.")
+                                else: raise unwrap_err
+                            else: raise unwrap_err
                     else: raise unwrap_err
 
                 # Re-encrypt with new password
@@ -598,6 +622,12 @@ class SecretsManager:
                 rehashed_vaults.append((v_id, new_wrap, acc.get('access_level', 'member')))
             except Exception as e:
                 logger.error(f"Failed to re-wrap vault {v_id} during password change: {e}")
+
+        # --- ATOMICITY CHECK ---
+        active_vault_ok = any(v[0] == self.session.current_vault_id for v in rehashed_vaults) if self.session.current_vault_id else True
+        if not active_vault_ok:
+            raise RuntimeError(f"Cambio de contraseña abortado: No se pudo re-cifrar la bóveda activa ({self.session.current_vault_id}). "
+                               "Para evitar bloqueo de datos, el proceso se ha detenido.")
 
         # 3. Sync to Cloud FIRST (to ensure we don't break local if bank fails)
         if user_manager:

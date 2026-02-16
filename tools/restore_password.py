@@ -13,7 +13,8 @@ db_path = Path(r"C:\PassGuardian_v2\data\passguardian.db")
 conn = sqlite3.connect(db_path)
 
 # Restaurar contraseña de RODOLFO
-new_password = "RODOLFO"
+import getpass
+new_password = getpass.getpass("Ingrese NUEVA contraseña: ")
 hashed = hash_password(new_password)
 
 conn.execute("UPDATE users SET password_hash = ? WHERE username = 'RODOLFO'", (hashed,))

@@ -22,7 +22,8 @@ def reset_global_rodolfo():
     print("RESETEO GLOBAL DE IDENTIDAD (NUBE + LOCAL)")
     print("="*60)
     
-    password = "RODOLFO"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para RESET REGIONAL: ")
     username = "RODOLFO"
     vault_id = "0637ae0d-7446-4c94-bc06-18c918ce596e"
     

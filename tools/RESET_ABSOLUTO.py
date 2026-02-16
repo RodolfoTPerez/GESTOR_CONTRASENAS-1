@@ -22,7 +22,8 @@ def reset_final_y_limpio():
     print("RESETEO ABSOLUTO DE IDENTIDAD - RODOLFO")
     print("="*60)
     
-    password = "RODOLFO"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para RESET ABSOLUTO: ")
     username = "RODOLFO"
     vault_id = "0637ae0d-7446-4c94-bc06-18c918ce596e"
     

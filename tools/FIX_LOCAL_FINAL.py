@@ -19,7 +19,8 @@ def hard_reset_rodolfo():
         conn_u = sqlite3.connect(db_user)
         conn_u.execute("DELETE FROM users WHERE UPPER(username) = 'RODOLFO'")
         
-        password = "RODOLFO"
+        import getpass
+        password = getpass.getpass("Ingrese contraseña para FIX LOCAL: ")
         from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM

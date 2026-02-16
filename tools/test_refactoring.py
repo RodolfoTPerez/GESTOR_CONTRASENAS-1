@@ -16,7 +16,8 @@ def test_refactored_manager():
     
     # 2. Setup a test user profile (simulate setup)
     username = "TEST_REFAC"
-    password = "SafePassword123!"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para TEST REFACTOR: ")
     salt = os.urandom(16).hex()
     v_salt = os.urandom(16)
     

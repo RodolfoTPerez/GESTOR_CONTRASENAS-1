@@ -9,7 +9,8 @@ def derive_kek(password, salt, iterations=100_000):
 def test_kiki_keys():
     # KIKI's data from common knowledge or previously retrieved
     # password is 'kiki' (assumed from context or common dev practice here)
-    password = "KIKI" # The user usually uses uppercase for names, let's try KIKI or kiki
+    import getpass
+    password = getpass.getpass("Ingrese contraseña (KIKI): ")
     
     conn = sqlite3.connect('data/vault_kiki.db')
     conn.row_factory = sqlite3.Row

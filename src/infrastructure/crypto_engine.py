@@ -22,42 +22,58 @@ from cryptography.hazmat.backends import default_backend
 import logging
 import time
 from functools import wraps
-from collections import defaultdict
+from src.infrastructure.security.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
-# Rate limiting simple in-memory
-_attempts = defaultdict(list)
+# [NEW] Global RateLimiter instance
+auth_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 
 def rate_limit(max_attempts=5, window=60):
     """
     Decorador para prevenir ataques de fuerza bruta/timing.
-    Limita el número de llamadas a una función en una ventana de tiempo.
+    Crea un RateLimiter dedicado para esta función respetando sus parámetros.
     """
+    # [SENIOR FIX] Cada función decorada tiene su propia instancia de límites
+    limiter = RateLimiter(max_attempts=max_attempts, window_seconds=window)
+    
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            now = time.time()
-            # Crear key única basada en nombre de función y primer argumento (si existe)
-            # Esto asume que el primer arg es algo identificable o usa 'global'
-            key = f"{func.__name__}_{args[0] if args else 'global'}"
+            # Lógica Senior para Identificación de Llave:
+            # 1. Si es un método, el primer arg es 'self'. Lo saltamos.
+            relevant_args = args[1:] if args and hasattr(args[0], '__dict__') else args
             
-            # Limpiar intentos fuera de ventana
-            _attempts[key] = [t for t in _attempts[key] if now - t < window]
+            key_val = "global"
+            if relevant_args:
+                first = relevant_args[0]
+                if isinstance(first, (bytes, bytearray)):
+                    key_val = hashlib.sha256(first).hexdigest()[:12]
+                else:
+                    key_val = str(first).strip().lower()
             
-            if len(_attempts[key]) >= max_attempts:
-                logger.warning(f"Rate limit exceeded for {key}")
-                raise ValueError(f"Demasiados intentos. Por favor espere {window} segundos.")
+            key = f"{func.__name__}_{key_val}"
             
-            _attempts[key].append(now)
-            return func(*args, **kwargs)
+            if limiter.is_blocked(key):
+                remaining = limiter.get_remaining_seconds(key)
+                logger.warning(f"Rate limit exceeded for {key}. Blocked for {remaining}s")
+                raise ValueError(f"Demasiados intentos. Por favor espere {remaining} segundos.")
+            
+            try:
+                result = func(*args, **kwargs)
+                if result is True:
+                    limiter.reset(key)
+                return result
+            except Exception as e:
+                # Solo registramos intentos fallidos si son errores de valor o lógica (auth fail)
+                limiter.record_attempt(key)
+                raise e
         return wrapper
     return decorator
 
 def reset_rate_limits():
-    """Limpia el historial de intentos (Solo para tests)."""
-    global _attempts
-    _attempts.clear()
+    """Limpia el historial de intentos."""
+    auth_limiter.attempts.clear()
 
 
 class CryptoEngine:
@@ -334,9 +350,8 @@ def _test_crypto_engine():
     
     # Test 2: Wrap/Unwrap con password de usuario A
     logger.debug("\n[TEST 2] Wrap/Unwrap with User A...")
-    user_a_password = "password_A"
+    user_a_password = "password_A_test"
     user_a_salt = os.urandom(16)
-    
     wrapped_a = CryptoEngine.wrap_vault_key(vault_key, user_a_password, user_a_salt)
     logger.debug(f"[OK] Wrapped (A): {len(wrapped_a)} bytes")
     assert len(wrapped_a) == 60  # 12 nonce + 32 plaintext + 16 GCM tag
@@ -348,7 +363,7 @@ def _test_crypto_engine():
     
     # Test 3: Wrap/Unwrap con password de usuario B
     logger.debug("\n[TEST 3] Wrap/Unwrap with User B...")
-    user_b_password = "password_B"
+    user_b_password = "password_B_test"
     user_b_salt = os.urandom(16)
     
     wrapped_b = CryptoEngine.wrap_vault_key(vault_key, user_b_password, user_b_salt)

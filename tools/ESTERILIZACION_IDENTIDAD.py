@@ -22,7 +22,8 @@ def limpieza_profunda_identidad():
     print("OPERACION: ESTERILIZACION DE IDENTIDAD - RODOLFO")
     print("="*60)
     
-    password = "RODOLFO"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para ESTERILIZACIÓN: ")
     username = "RODOLFO"
     vault_id = "0637ae0d-7446-4c94-bc06-18c918ce596e"
     totp_limpio = "JBSWY3DPEHPK3PXP" # 16 chars Base32 puro

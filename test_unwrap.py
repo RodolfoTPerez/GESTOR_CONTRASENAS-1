@@ -10,7 +10,8 @@ from src.infrastructure.crypto_engine import CryptoEngine, reset_rate_limits
 
 def test():
     print("Testing unwrap_vault_key with rate limit...")
-    password = "testpassword"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña (testpassword): ")
     salt = os.urandom(16)
     master_key = os.urandom(32)
     

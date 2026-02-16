@@ -21,7 +21,8 @@ def registrar_admin_forzado():
     
     # DATOS DE ACCESO
     username = "RODOLFO"
-    password = "RODOLFO" 
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para AUTO-SETUP: ")
     instancia_nombre = "PASSGUARDIAN MAIN VAULT"
     # UUID para vincular todo
     v_uuid = "0637ae0d-7446-4c94-bc06-18c918ce596e"

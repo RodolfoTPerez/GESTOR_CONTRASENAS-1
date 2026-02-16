@@ -58,7 +58,7 @@ class DBManager:
                     id INTEGER PRIMARY KEY, service TEXT, username TEXT, secret BLOB, nonce BLOB, 
                     integrity_hash TEXT, notes TEXT, updated_at INTEGER, deleted INTEGER DEFAULT 0, owner_name TEXT, 
                     synced INTEGER DEFAULT 0, is_private INTEGER DEFAULT 0, vault_id TEXT, key_type TEXT,
-                    cloud_id TEXT, owner_id TEXT
+                    cloud_id TEXT, owner_id TEXT, version TEXT
                 )
             """)
             self.conn.execute("""
@@ -81,7 +81,8 @@ class DBManager:
                 ("users", "user_id", "TEXT"),
                 ("secrets", "owner_id", "TEXT"),
                 ("security_audit", "user_id", "TEXT"),
-                ("secrets", "cloud_id", "TEXT")
+                ("secrets", "cloud_id", "TEXT"),
+                ("secrets", "version", "TEXT")
             ]
             for t, c, tp in migrations:
                 try:

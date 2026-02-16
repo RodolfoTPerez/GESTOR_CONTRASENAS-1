@@ -55,7 +55,8 @@ def primer_inicio():
     print("-" * 50)
     
     username = "RODOLFO"
-    password = "RODOLFO" # Contraseña de primer inicio (Se recomienda cambiar luego)
+    import getpass
+    password = getpass.getpass("Ingrese contraseña de PRIMER INICIO: ")
     
     try:
         print(f"   Generando llaves E2EE para '{username}'...")

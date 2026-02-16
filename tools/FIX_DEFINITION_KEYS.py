@@ -22,7 +22,8 @@ def fix_identidad_definitiva():
     print("REPARACIÓN DE LLAVES Y TOTP (GRADO SENIOR)")
     print("="*60)
     
-    password = "RODOLFO"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para FIX DEFINITION: ")
     username = "RODOLFO"
     vault_id = "0637ae0d-7446-4c94-bc06-18c918ce596e"
     totp_limpio = "JBSWY3DPEHPK3PXP" # 16 caracteres exactos

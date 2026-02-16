@@ -33,7 +33,8 @@ def verificar_estado():
     print(f"   Salt: {user_data['salt']}")
     
     # 2. Verificar password
-    password = "RODOLFO"
+    import getpass
+    password = getpass.getpass("Ingrese contraseña para VERIFICACIÓN: ")
     salt = user_data['salt']
     stored_hash = user_data['password_hash']
     

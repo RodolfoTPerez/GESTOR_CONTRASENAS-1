@@ -45,128 +45,125 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-def start_app():
-    # --- FIX SENIOR: Habilitar escalado de alta densidad para evitar borrosidad en QRs ---
+def _setup_environment():
+    """Configura el entorno de ejecución y escalado DPI."""
     from PyQt5.QtCore import Qt, QCoreApplication
     from src.presentation.theme_manager import ThemeManager
-    from PyQt5.QtCore import QSettings
-
+    
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
     
     QCoreApplication.setOrganizationName(ThemeManager.APP_ID)
     QCoreApplication.setApplicationName("VultraxCore_Global")
-    
-    app = QApplication(sys.argv)
-    
-    tm = ThemeManager()
-    
-    # --- [SENIOR] CARGA DE CONFIGURACIÓN GLOBAL (INI para máxima fiabilidad) ---
+
+def _load_global_config(app, tm):
+    """Carga el tema y la configuración de QSettings."""
+    from PyQt5.QtCore import QSettings
     config_path = str(PathManager.GLOBAL_SETTINGS_INI)
     global_settings = QSettings(config_path, QSettings.IniFormat)
     
-    # 1. Aplicar Tema Global
     active_theme = global_settings.value("theme_active", "tactical_dark")
     tm.set_theme(active_theme)
     tm.apply_app_theme(app)
     logger.info(f"Tema Global: {active_theme} | Fuente: {config_path}")
+    return global_settings
 
-    # 1. Iniciamos el SecretsManager (Maneja la DB SQLite)
+def _initialize_core_managers():
+    """Inicializa los managers de identidad y secretos."""
     sm = SecretsManager(None)
-    # 2. Iniciamos el UserManager con referencia a la DB local
     um = UserManager(sm)
+    return sm, um
 
-    # --- DETECCIÓN DE ESTADO CERO (INSTALACIÓN) ---
-    local_users_exist = False
+def _handle_first_run(sm, um):
+    """Detecta si es el primer inicio y lanza el SetupWizard."""
     try:
         vault_dbs = list(data_dir.glob("vault_*.db"))
         local_users_exist = len(vault_dbs) > 0
-        logger.info(f"Bases de datos encontradas: {len(vault_dbs)}")
-        if vault_dbs:
-            logger.info(f"Archivos vault_*.db: {[db.name for db in vault_dbs]}")
+        if not local_users_exist:
+            from src.presentation.dialogs.setup_wizard import SetupWizard
+            wizard = SetupWizard(sm, um)
+            if wizard.exec_() != 1:
+                sys.exit(0)
     except Exception as e:
         logger.error(f"Error verificando usuarios locales: {e}")
-        local_users_exist = False
-    
-    if not local_users_exist:
-        from src.presentation.dialogs.setup_wizard import SetupWizard
-        wizard = SetupWizard(sm, um)
-        if wizard.exec_() != 1:
-            sys.exit(0)
-    
-    # 2. Cargar Idioma Global (Prioridad Absoluta)
+
+def _load_language(sm, global_settings):
+    """Configura el idioma global del sistema."""
     saved_lang = global_settings.value("language")
-    
-    # Fallback a meta si no hay settings (compatibilidad legacy)
     if not saved_lang or saved_lang not in ["ES", "EN"]:
         saved_lang = sm.get_meta("language")
         
-    if saved_lang and saved_lang in ["ES", "EN"]:
-        MESSAGES.LANG = saved_lang
-        logger.info(f"Idioma Global cargado: {MESSAGES.LANG}")
-    else:
-        # Default fallback
-        MESSAGES.LANG = "EN"
-        logger.info("Idioma por defecto (EN) aplicado.")
+    MESSAGES.LANG = saved_lang if saved_lang in ["ES", "EN"] else "EN"
+    logger.info(f"Idioma Global cargado: {MESSAGES.LANG}")
 
-    # 3. Creamos el login pasando el UserManager
+def start_app():
+    """Punto de entrada principal de la aplicación."""
+    _setup_environment()
+    app = QApplication(sys.argv)
+    
+    from src.presentation.theme_manager import ThemeManager
+    tm = ThemeManager()
+    
+    global_settings = _load_global_config(app, tm)
+    sm, um = _initialize_core_managers()
+    _handle_first_run(sm, um)
+    _load_language(sm, global_settings)
+
+    # Inicializar Login
     login_window = LoginView(um)
-    app.login_window = login_window  # Mantener referencia
+    app.login_window = login_window
     app.dashboard = None
 
     def on_login_success(master_password, totp_secret, user_profile):
-        logger.info(f"[DEBUG] on_login_success entered for {user_profile.get('username')}")
-        try:
-            # Sincronización de perfil: Ahora es segura gracias al blindaje de preservación local
-            logger.info("[DEBUG] Syncing user to local...")
-            um.sync_user_to_local(user_profile['username'], user_profile)
-            
-            # 1. Activar usuario (esto cambia la conexión a vault_<user>.db)
-            logger.info("[DEBUG] Activating user session...")
-            sm.set_active_user(user_profile['username'], master_password)
-            
-            # 2. Asegurar que el contexto de Bóveda (Vault ID) esté activo
-            if user_profile.get('vault_id'):
-                sm.current_vault_id = user_profile['vault_id']
-                logger.info(f"Contexto de Bóveda establecido: {sm.current_vault_id}")
-            
-            logger.info("[DEBUG] Creating SyncManager...")
-            sync = SyncManager(sm, SUPABASE_URL, SUPABASE_KEY)
-            
-            # LAZY LOADING: Importar Dashboard aquí ahorra 3-4 segundos de inicio
-            logger.info("[DEBUG] Lazy loading DashboardView...")
-            from src.presentation.dashboard.dashboard_view import DashboardView
-            
-            logger.info("[DEBUG] Instantiating DashboardView...")
-            dashboard = DashboardView(sm, sync, um, user_profile)
-            app.dashboard = dashboard  # Mantener referencia global
-            logger.info("[DEBUG] Showing Dashboard...")
-            dashboard.show()
-            dashboard.raise_()
-            dashboard.activateWindow()
-            logger.info("[DEBUG] Login flow completed successfully.")
-        except ValueError as ve:
-            # Error de negocio/lógica (como el cambio de Master Key)
-            logger.warning(f"Vault Integrity Warning: {ve}")
-            PremiumMessage.warning(None, MESSAGES.VAULT.TITLE_SECURITY, str(ve))
-            # Continuamos cargando, es solo un aviso de integridad
-            
-        except Exception as e:
-            logger.critical(f"Critical Startup Error: {e}")
-            # Diagnóstico extendido para facilitar soporte
-            logger.critical(f"User Context: {user_profile.get('username', 'Unknown')}")
-            logger.critical(f"Vault Context: {user_profile.get('vault_id', 'Unknown')}")
-            logger.critical("Stack trace:", exc_info=True)
-            
-            PremiumMessage.critical(
-                None, 
-                MESSAGES.VAULT.TITLE_CRITICAL, 
-                f"{str(e)}\n\nSi el error persiste, contacte a soporte con el log 'debug.log'."
-            )
-            sys.exit(1)
+        _handle_login_success(app, sm, um, master_password, user_profile)
 
     login_window.on_login_success = on_login_success
     login_window.show()
     sys.exit(app.exec_())
+
+def _handle_login_success(app, sm, um, master_password, user_profile):
+    """Gestiona la transición exitosa del login al dashboard."""
+    try:
+        username = user_profile['username']
+        
+        # [BOOTSTRAP SYNC] Initialize SyncManager early to pull updated security keys
+        sync = SyncManager(sm, SUPABASE_URL, SUPABASE_KEY)
+        try:
+            # Sincronizamos el perfil y las llaves de acceso ANTES de intentar el unwrap en set_active_user
+            # Esto evita el error de "Blocked Key" si hubo un cambio de clave en otro dispositivo o sesión
+            if user_profile.get('id'):
+                sync._sync_shared_keys(cloud_user_id=user_profile['id'])
+            else:
+                # Fallback por si no tenemos ID
+                um.sync_user_to_local(username, user_profile)
+        except Exception as sync_err:
+            logger.warning(f"Bootstrap Sync failed: {sync_err}. Proceeding with local keys.")
+            um.sync_user_to_local(username, user_profile)
+
+        sm.set_active_user(username, master_password)
+        
+        if user_profile.get('vault_id'):
+            sm.current_vault_id = user_profile['vault_id']
+            
+        from src.presentation.dashboard.dashboard_view import DashboardView
+        dashboard = DashboardView(sm, sync, um, user_profile)
+        app.dashboard = dashboard
+        
+        dashboard.show()
+        dashboard.raise_()
+        dashboard.activateWindow()
+        logger.info(f"Sesión iniciada correctamente para {username}")
+    except Exception as e:
+        _handle_critical_error(e, user_profile)
+
+def _handle_critical_error(e, user_profile):
+    """Maneja errores críticos durante el arranque de la sesión."""
+    logger.critical(f"Critical Startup Error: {e}", exc_info=True)
+    PremiumMessage.critical(
+        None, 
+        MESSAGES.VAULT.TITLE_CRITICAL, 
+        f"{str(e)}\n\nSi el error persiste, contacte a soporte."
+    )
+    sys.exit(1)
 if __name__ == "__main__":
     start_app()

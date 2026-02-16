@@ -23,7 +23,8 @@ if __name__ == "__main__":
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
     username = "RODOLFO"
-    new_password = "RODOLFO"
+    import getpass
+    new_password = getpass.getpass("Ingrese NUEVA contraseña para RESET: ")
     # Salt fijo para mayor facilidad de restauración
     salt = "4e3f2a1b0c9d8e7f" 
     

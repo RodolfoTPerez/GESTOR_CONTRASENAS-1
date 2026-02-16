@@ -5,6 +5,7 @@ from config.config import SUPABASE_URL, SUPABASE_KEY
 from src.infrastructure.security.device_fingerprint import get_hwid
 from src.infrastructure.crypto_engine import CryptoEngine, rate_limit
 import base64, secrets, hashlib, re, logging
+from src.domain.messages import MESSAGES
 
 class UserManager:
     def __init__(self, secrets_manager=None):
@@ -87,11 +88,9 @@ class UserManager:
             except: pass
 
         # Caso: Es Base64 directo
-        try:
-            # Solo intentamos B64 si tiene el formato correcto para evitar falsos positivos con passwords
-            if re.match(r'^[A-Za-z0-9+/=]+$', s):
-                return base64.b64decode(s)
-        except: pass
+        if re.match(r'^[A-Za-z0-9+/=]+$', s) and len(s) >= 32 and (len(s) % 4 == 0):
+            try: return base64.b64decode(s)
+            except: pass
         
         return s.encode('utf-8')
 
@@ -362,6 +361,7 @@ class UserManager:
         self.sm.conn.commit()
         return vault_salt_bytes
 
+    @rate_limit(max_attempts=5, window=60)
     def check_local_login(self, username, password):
         """Intenta validar el login usando solo la base de datos local."""
         username_clean = username.upper().replace(" ", "")
@@ -525,12 +525,48 @@ class UserManager:
             return None
 
     def get_all_users(self):
-        """Obtiene la lista de todos los usuarios registrados."""
+        """Obtiene la lista de todos los usuarios registrados con fallback offline."""
         try:
             r = self.supabase.table("users").select("*").execute()
             return r.data or []
         except Exception as e:
+            # [OFFLINE FALLBACK] Si falla la conexión a Supabase, usar datos locales
+            err_str = str(e).lower()
+            if "getaddrinfo" in err_str or "connection" in err_str or "network" in err_str or "timeout" in err_str:
+                self.logger.warning(f"Network unavailable, using local user cache: {e}")
+                return self._get_local_users()
             self.logger.error(f"Error listing users: {e}")
+            return []
+    
+    def _get_local_users(self):
+        """Obtiene usuarios desde la base de datos local SQLite."""
+        if not self.sm or not self.sm.conn:
+            self.logger.warning("No local database connection available")
+            return []
+        
+        try:
+            cursor = self.sm.conn.execute("""
+                SELECT username, role, 1 as active, totp_secret, user_id 
+                FROM users 
+                WHERE username IS NOT NULL
+            """)
+            rows = cursor.fetchall()
+            
+            # Convertir a formato compatible con Supabase response
+            users = []
+            for row in rows:
+                users.append({
+                    "username": row[0],
+                    "role": row[1] or "user",
+                    "active": bool(row[2]),
+                    "totp_secret": row[3],
+                    "id": row[4] or f"local_{row[0]}"  # Fallback ID
+                })
+            
+            self.logger.info(f"Retrieved {len(users)} users from local cache")
+            return users
+        except Exception as e:
+            self.logger.error(f"Error reading local users: {e}")
             return []
 
     def get_user_count(self):
@@ -589,120 +625,134 @@ class UserManager:
 
 
     def add_new_user(self, username: str, role: str, password: str = None):
-        """
-        Crea un nuevo usuario con gestión profesional de llaves.
-        
-        Este método es el punto de entrada para el 'First Run' o creación manual.
-        Genera Salts locales, deriva llaves de protección y sube el perfil inicial
-        a Supabase asegurando la integridad criptográfica.
-        
-        Args:
-            username: Identidad única del usuario.
-            role: Rol asignado ('admin' o 'user').
-            password: Password inicial (opcional, se pedirá si falta).
-            
-        Returns:
-            tuple: (bool success, str message)
-        """
-        """Crea un nuevo usuario con gestión profesional de llaves para el arranque."""
+        """Crea un nuevo usuario con gestión profesional de llaves."""
         username_clean = username.upper().replace(" ", "")
-        
-        # [DEBUG] Estado de master_key al inicio
-        self.logger.debug(f"add_new_user debug - User={username_clean}, Role={role}")
-        if self.sm:
-            self.logger.debug(f"    - master_key exists: {self.sm.master_key is not None}")
-            if self.sm.master_key:
-                self.logger.debug(f"master_key length: {len(self.sm.master_key)} bytes")
         
         try:
             # 1. Validación de existencia y límites
-            check = self.validate_user_access(username_clean)
-            if check and check.get("exists"):
-                return False, f"El usuario '{username_clean}' ya está registrado en el sistema."
+            valid, msg = self._validate_new_user(username_clean)
+            if not valid: return False, msg
 
-            if self.get_user_count() >= 5:
-                return False, "Límite de usuarios alcanzado (Máx 5)."
+            # 2. Generación de llaves E2EE
+            keys = self._generate_user_keys(username_clean, role, password)
             
-            # 2. Caso Especial: BOOTSTRAPPING (Primer Admin)
-            is_first_admin = (role == "admin" and self.get_user_count() == 0)
-            
-            # Determinamos el vault_id dinámicamente
-            current_v_id = getattr(self.sm, 'current_vault_id', None)
-            if not current_v_id:
-                current_v_id = self.get_master_vault_id()
-                if self.sm: self.sm.current_vault_id = current_v_id
+            # 3. Preparar payload para Cloud
+            payload = self._build_user_payload(username_clean, role, keys, password)
 
-            # 3. GENERACIÓN DE LLAVES E2EE
-            protected_key_bytes = None
-            v_salt_bytes = secrets.token_bytes(16)
-            pwd_hash, salt = self.hash_password(password) if password else (None, None)
-
-            if is_first_admin:
-                # Generamos la LLAVE MAESTRA original del sistema
-                from src.infrastructure.crypto_engine import CryptoEngine
-                new_master_key = secrets.token_bytes(32)
-                self.sm.master_key = new_master_key # En memoria temporal
-                protected_key_bytes = self.sm.wrap_key(new_master_key, password, v_salt_bytes)
-                self.logger.info("Primer admin - Master key generada y wrapped")
-            elif self.sm and self.sm.master_key and password:
-                # El admin actual envuelve la llave para el nuevo usuario
-                protected_key_bytes = self.sm.wrap_key(self.sm.master_key, password, v_salt_bytes)
-                self.logger.info(f"Secondary user - Protected key generated ({len(protected_key_bytes)} bytes)")
-            else:
-                # [DEBUG] Identificar por qué no se generaron llaves
-                self.logger.warning(f"Key generation skipped: SM={self.sm is not None}, MasterKey={self.sm.master_key is not None if self.sm else False}, Pass={password is not None}")
-
-            # 4. PREPARAR PAYLOAD PARA CLOUD
-            payload = {
-                "username": username_clean,
-                "role": role,
-                "active": True,
-                "vault_id": current_v_id,
-                "password_hash": pwd_hash,
-                "salt": salt,
-                "vault_salt": base64.b64encode(v_salt_bytes).decode('ascii') if v_salt_bytes else None,
-                "protected_key": base64.b64encode(protected_key_bytes).decode('ascii') if protected_key_bytes else None
-            }
-
-            # 5. INSERCIÓN EN SUPABASE
+            # 4. Inserción en Supabase
             res = self.supabase.table("users").insert(payload).execute()
-            
-            if res.data and current_v_id and protected_key_bytes:
-                new_user_id = res.data[0]['id']
-                # [RESILIENT FLOW] Registrar acceso oficial a la bóveda con fallback cromático
-                try:
-                    payload_va = {
-                        "user_id": new_user_id,
-                        "vault_id": current_v_id,
-                        "wrapped_master_key": protected_key_bytes.hex()
-                    }
-                    self.supabase.table("vault_access").upsert(payload_va).execute()
-                except Exception as va_error:
-                    err_str = str(va_error)
-                    if "wrapped_master_key" in err_str.lower():
-                        try:
-                            self.logger.info("Retrying vault_access with 'wrapped_vault_key' fallback...")
-                            payload_va["wrapped_vault_key"] = payload_va.pop("wrapped_master_key")
-                            self.supabase.table("vault_access").upsert(payload_va).execute()
-                        except Exception as va_error2:
-                            self.logger.error(f"Critical: Could not register vault access (v2): {va_error2}")
-                    else:
-                        self.logger.error(f"Could not register vault access: {va_error}")
+            if not res.data: return False, "Error al crear perfil en la nube."
 
-            # 6. ESTABILIZACIÓN LOCAL INMEDIATA
-            if res.data:
-                 self.logger.info(f"Stabilizing keys for {username_clean}...")
-                 self.sync_user_to_local(username_clean, res.data[0])
-                 if password:
-                     self.sm.set_active_user(username_clean, password)
+            # 5. Registrar acceso a bóveda y estabilizar localmente
+            user_data = res.data[0]
+            if keys.get('protected'):
+                # Sincronizar acceso a bóveda localmente antes de terminar
+                if self.sm:
+                    # Guardar en local vault_access para que el usuario pueda loguearse offline de inmediato
+                    self.sm.users.save_vault_access(keys['vault_id'], keys['protected'], synced=1)
+                
+                # Sincronizar en la nube
+                self._register_vault_access(user_data['id'], keys['vault_id'], keys['protected'])
+
+            self.sync_user_to_local(username_clean, user_data)
+            if password:
+                self.sm.set_active_user(username_clean, password)
 
             return True, f"Usuario {username_clean} configurado correctamente."
         except Exception as e:
-            err_str = str(e)
-            if "23505" in err_str or "already exists" in err_str.lower():
-                return False, f"Error: El usuario '{username_clean}' ya existe. Por favor, usa un nombre diferente."
-            self.logger.error(f"Error in add_new_user: {e}")
-            return False, f"Fallo de Protocolo: {err_str}"
+            # [OFFLINE DETECTION] Detectar errores de red y dar mensaje claro
+            err_str = str(e).lower()
+            if "getaddrinfo" in err_str or "connection" in err_str or "network" in err_str or "timeout" in err_str:
+                self.logger.error(f"Network unavailable during user creation: {e}")
+                fallback_msg = MESSAGES.COMMON.ERR_OFFLINE if hasattr(MESSAGES, 'COMMON') and hasattr(MESSAGES.COMMON, 'ERR_OFFLINE') else "No hay conexión a internet."
+                return False, fallback_msg
+            return self._handle_add_user_error(e, username_clean)
+
+
+    def _validate_new_user(self, username: str) -> Tuple[bool, str]:
+        """Realiza comprobaciones de negocio antes de crear el usuario."""
+        check = self.validate_user_access(username)
+        if check and check.get("exists"):
+            return False, f"El usuario '{username}' ya está registrado en el sistema."
+        if self.get_user_count() >= 5:
+            return False, "Límite de usuarios alcanzado (Máx 5)."
+        return True, ""
+
+    def _generate_user_keys(self, username: str, role: str, password: str) -> Dict[str, Any]:
+        """Genera salts y envuelve la llave maestra según el rol del usuario."""
+        v_salt = secrets.token_bytes(16)
+        protected = None
+        is_first = (role == "admin" and self.get_user_count() == 0)
+        
+        # Resolución de Vault Context
+        vault_id = getattr(self.sm, 'current_vault_id', None) or self.get_master_vault_id()
+        if self.sm: self.sm.current_vault_id = vault_id
+
+        if is_first:
+            new_master = secrets.token_bytes(32)
+            if self.sm: self.sm.master_key = new_master # En memoria temporal
+            protected = self.sm.wrap_key(new_master, password, v_salt)
+            self.logger.info("Primer admin - Llave maestra generada.")
+        else:
+            # Intentar obtener la llave del admin si está disponible
+            target_key = None
+            if self.sm and self.sm.master_key:
+                target_key = self.sm.master_key
+            elif self.sm and self.sm.vault_key:
+                target_key = self.sm.vault_key
+            elif self.sm and vault_id:
+                # Fallback: intentar recuperar de vault_access local si el admin la tiene
+                va = self.sm.users.get_vault_access(vault_id)
+                if va and va.get("wrapped_master_key"):
+                    # Necesitamos la password del admin para esto... 
+                    # Pero el admin ya debería haberla desencriptado en su sesión.
+                    pass 
+
+            if target_key and password:
+                protected = self.sm.wrap_key(target_key, password, v_salt)
+                self.logger.info(f"Usuario secundario - Llave {'Maestra' if target_key == self.sm.master_key else 'de Bóveda'} enlazada.")
+            else:
+                self.logger.warning("No se pudo enlazar llave: Admin no tiene llave activa en memoria.")
+            
+        return {"vault_id": vault_id, "v_salt": v_salt, "protected": protected}
+
+    def _build_user_payload(self, username: str, role: str, keys: dict, password: str) -> dict:
+        """Construye el objeto de datos para la inserción en Supabase."""
+        pwd_hash, salt = self.hash_password(password) if password else (None, None)
+        return {
+            "username": username,
+            "role": role,
+            "active": True,
+            "vault_id": keys["vault_id"],
+            "password_hash": pwd_hash,
+            "salt": salt,
+            "vault_salt": base64.b64encode(keys["v_salt"]).decode('ascii'),
+            "protected_key": base64.b64encode(keys["protected"]).decode('ascii') if keys["protected"] else None
+        }
+
+    def _register_vault_access(self, user_id, vault_id, protected_key):
+        """Persiste el registro de acceso a la bóveda con fallback cromático."""
+        try:
+            payload = {
+                "user_id": user_id,
+                "vault_id": vault_id,
+                "wrapped_master_key": protected_key.hex()
+            }
+            self.supabase.table("vault_access").upsert(payload).execute()
+        except Exception as e:
+            if "wrapped_master_key" in str(e).lower():
+                payload["wrapped_vault_key"] = payload.pop("wrapped_master_key")
+                self.supabase.table("vault_access").upsert(payload).execute()
+            else:
+                self.logger.error(f"Error registrando acceso a bóveda: {e}")
+
+    def _handle_add_user_error(self, e, username):
+        """Centraliza la gestión de errores durante la creación de usuarios."""
+        err_str = str(e)
+        if "23505" in err_str or "already exists" in err_str.lower():
+            return False, f"El usuario '{username}' ya existe."
+        self.logger.error(f"Error in add_new_user: {e}")
+        return False, f"Fallo de Protocolo: {err_str}"
 
     def get_master_vault_id(self):
         """

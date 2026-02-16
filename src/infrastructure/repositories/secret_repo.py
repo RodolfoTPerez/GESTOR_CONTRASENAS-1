@@ -16,14 +16,14 @@ class SecretRepository:
     def add_secret(self, service: str, username: str, encrypted_secret: bytes, 
                    nonce: bytes, integrity: str, notes: Optional[str], 
                    is_private: int, owner_name: str, owner_id: Optional[str], 
-                   vault_id: Optional[str]) -> Optional[int]:
+                   vault_id: Optional[str], version: Optional[str] = None) -> Optional[int]:
         try:
             cursor = self.db.execute(
                 """INSERT OR REPLACE INTO secrets 
-                (service, username, secret, nonce, updated_at, deleted, owner_name, owner_id, integrity_hash, notes, is_private, vault_id) 
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)""",
+                (service, username, secret, nonce, updated_at, deleted, owner_name, owner_id, integrity_hash, notes, is_private, vault_id, version) 
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
                 (service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), 
-                owner_name, owner_id, integrity, notes, int(is_private), vault_id)
+                owner_name, owner_id, integrity, notes, int(is_private), vault_id, version)
             )
             self.db.commit()
             return cursor.lastrowid
@@ -40,8 +40,8 @@ class SecretRepository:
             self.db.execute("BEGIN TRANSACTION")
             self.db.conn.executemany(
                 """INSERT OR REPLACE INTO secrets 
-                (service, username, secret, nonce, updated_at, deleted, owner_name, owner_id, integrity_hash, notes, is_private, vault_id) 
-                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)""",
+                (service, username, secret, nonce, updated_at, deleted, owner_name, owner_id, integrity_hash, notes, is_private, vault_id, version) 
+                VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
                 records_data
             )
             self.db.commit()
@@ -54,13 +54,13 @@ class SecretRepository:
 
     def update_secret(self, sid: int, service: str, username: str, 
                       encrypted_secret: bytes, nonce: bytes, integrity: str, 
-                      notes: Optional[str], is_private: int) -> None:
+                      notes: Optional[str], is_private: int, version: Optional[str] = None) -> None:
         try:
             self.db.execute(
                 """UPDATE secrets SET 
-                service=?, username=?, secret=?, nonce=?, updated_at=?, integrity_hash=?, notes=?, is_private=?, synced=0 
+                service=?, username=?, secret=?, nonce=?, updated_at=?, integrity_hash=?, notes=?, is_private=?, synced=0, version=? 
                 WHERE id=?""",
-                (service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), integrity, notes, int(is_private), sid)
+                (service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), integrity, notes, int(is_private), version, sid)
             )
             self.db.commit()
         except Exception as e:

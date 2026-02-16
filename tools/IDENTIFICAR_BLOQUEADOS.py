@@ -12,7 +12,8 @@ def identify_locked_secrets():
     print("=== IDENTIFICACIÓN DE SECRETOS BLOQUEADOS ===")
     
     # Suponemos que el usuario es RODOLFO y el pass es RODOLFO (basado en fix_definition_keys.py)
-    password = "RODOLFO" 
+    import getpass
+    password = getpass.getpass("Ingrese contraseña (RODOLFO): ")
     username = "RODOLFO"
     
     sm = SecretsManager()

@@ -34,7 +34,8 @@ def reparacion_identidad():
         um = UserManager()
         sm = SecretsManager()
         
-        password = "RODOLFO"
+        import getpass
+        password = getpass.getpass("Ingrese contraseña para REPARACIÓN: ")
         v_salt = os.urandom(16)
         pwd_hash, salt = um.hash_password(password)
         

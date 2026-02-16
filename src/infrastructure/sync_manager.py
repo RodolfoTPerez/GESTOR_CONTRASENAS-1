@@ -67,7 +67,8 @@ class SyncManager:
                 "owner_id": self.sm.current_user_id,
                 "is_private": s.get("is_private", 0),
                 "synced": 1,
-                "vault_id": s.get("vault_id") or self.sm.current_vault_id
+                "vault_id": s.get("vault_id") or self.sm.current_vault_id,
+                "version": s.get("version")
             }
             payload.append(item)
 
@@ -109,12 +110,12 @@ class SyncManager:
                 1 if str(s.get("deleted")).lower() in ("1", "true", "t") else 0,
                 "restored", s.get("notes"), s.get("owner_name") or self.sm.current_user,
                 1, 1 if str(s.get("is_private")).lower() in ("1", "true", "t") else 0,
-                s.get("vault_id"), s.get("id")
+                s.get("vault_id"), s.get("id"), s.get("version")
             )
             self.sm.conn.execute("""
                 INSERT OR REPLACE INTO secrets 
-                (service, username, secret, nonce, updated_at, deleted, integrity_hash, notes, owner_name, synced, is_private, vault_id, cloud_id) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (service, username, secret, nonce, updated_at, deleted, integrity_hash, notes, owner_name, synced, is_private, vault_id, cloud_id, version) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, params)
         self.sm.conn.commit()
         if progress_callback: progress_callback(100, "Restore complete.")
@@ -146,6 +147,15 @@ class SyncManager:
                 res = self.client.get_records("users", f"select=id&username=ilike.{self.sm.current_user}")
                 if res: u_id = res[0]['id']
             if not u_id: return
+
+            # [HEALING] Ensure local profile (and vault_salt) is synced before key unwrap attempts
+            # This prevents "Phantom Salt" mismatches during vault access updates.
+            from src.infrastructure.user_manager import UserManager
+            um = UserManager(self.sm)
+            cloud_profile = self.client.get_records("users", f"select=*&id=eq.{u_id}")
+            if cloud_profile:
+                um.sync_user_to_local(self.sm.current_user, cloud_profile[0])
+
             accesses = self.client.get_records("vault_access", f"select=*&user_id=eq.{u_id}")
             for acc in accesses:
                 v_id = acc.get("vault_id")
@@ -190,7 +200,8 @@ class SyncManager:
                 vault_id=rr.get("vault_id"),
                 deleted=rr.get("deleted", 0),
                 synced=1,
-                cloud_id=rr["id"]
+                cloud_id=rr["id"],
+                version=rr.get("version")
             )
             count += 1
         return count
@@ -203,7 +214,8 @@ class SyncManager:
             "notes": rec.get("notes"), "updated_at": int(time.time()),
             "owner_name": str(rec.get("owner_name") or self.sm.current_user or "unknown").upper(),
             "is_private": rec.get("is_private", 0), "deleted": rec.get("deleted", 0),
-            "vault_id": rec.get("vault_id") or self.sm.current_vault_id
+            "vault_id": rec.get("vault_id") or self.sm.current_vault_id,
+            "version": rec.get("version")
         }
         self.client.post_records(self.table, [payload])
         return True
@@ -211,7 +223,9 @@ class SyncManager:
     def sync_single_record(self, record_id):
         if not self.check_internet(): return
         row = self.sm.conn.execute("SELECT * FROM secrets WHERE id=?", (record_id,)).fetchone()
-        if row: self._upload_record(self._row_to_dict(row))
+        if row:
+            if self._upload_record(self._row_to_dict(row)):
+                self.sm.mark_as_synced(record_id, 1)
 
     def _row_to_dict(self, row):
         """
@@ -233,7 +247,8 @@ class SyncManager:
             "deleted": row[8] if len(row) > 8 else 0,
             "vault_id": row[12] if len(row) > 12 else self.sm.current_vault_id,
             "updated_at": row[7] if len(row) > 7 else int(time.time()),
-            "owner_id": row[15] if len(row) > 15 else None
+            "owner_id": row[15] if len(row) > 15 else None,
+            "version": row[16] if len(row) > 16 else None
         }
 
     def sync_audit_logs(self):
