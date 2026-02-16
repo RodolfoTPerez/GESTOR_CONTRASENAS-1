@@ -164,8 +164,12 @@ class UserManager:
         Returns:
             bool: True si la persistencia fue exitosa.
         """
+        if not username:
+            self.logger.warning("Aborting sync: username is None")
+            return False
+            
         username_clean = username.upper().replace(" ", "")
-        if not self.sm: return
+        if not self.sm: return False
 
         # [CRITICAL FIX] Ensure we write to the specific User DB, not Global DB
         # This prevents 'Phantom Salt' bug where profile is saved to vultrax.db and lost.
@@ -190,6 +194,12 @@ class UserManager:
 
         # Obtener el perfil local una sola vez para las comparaciones de preservación
         local_profile = self.sm.get_local_user_profile(username_clean)
+        
+        # [HEALING DETECTION] 
+        # Check if the current session for THIS user is broken (unwrap failed)
+        session_is_broken = (self.sm.session.current_user == username_clean and self.sm.vault_key is None)
+        if session_is_broken:
+             self.logger.info(f"Healing Mode: Local broken session detected for {username_clean}. Preferring Cloud Credentials.")
 
         # 1. Manejar Vault Salt (UNIFICADO)
         vault_salt_bytes = self._normalize_to_bytes(cloud_profile.get("vault_salt"))
@@ -208,9 +218,12 @@ class UserManager:
         protected_key_bytes = self._normalize_to_bytes(cloud_profile.get("protected_key"))
         
         # [PRESERVACIÓN CRÍTICA] Si la nube no mandó protected_key, mantenemos la local
+        # [HEALING] Unless we are in healing mode and cloud DOES have a key
         if not protected_key_bytes and local_profile and local_profile.get("protected_key"):
             protected_key_bytes = self.sm._ensure_bytes(local_profile["protected_key"])
             self.logger.info("Preservando Protected Key local.")
+        elif session_is_broken and protected_key_bytes:
+             self.logger.info("Healing: Applying Cloud Protected Key (Bypassing local preservation).")
         
         # 3. Manejar Wrapped Vault Key (Equipo) - [PRESERVACIÓN CRÍTICA]
         wrapped_v_key = cloud_profile.get("wrapped_vault_key")
@@ -225,33 +238,35 @@ class UserManager:
                 wrapped_v_bytes = wrapped_v_key
             elif isinstance(wrapped_v_key, str):
                 if wrapped_v_key.startswith('\\x'):
-                    # Formato bytea: \\xHEXHEX que contiene Base64
                     try:
-                        # Paso 1: Hex → ASCII (Base64)
-                        ascii_b64 = bytes.fromhex(wrapped_v_key[2:]).decode('ascii')
-                        # Paso 2: Base64 → Bytes
-                        wrapped_v_bytes = base64.b64decode(ascii_b64)
-                    except Exception as e:
-                        self.logger.error(f"Error decoding wrapped_vault_key from \\x format: {e}")
-                        try: wrapped_v_bytes = base64.b64decode(wrapped_v_key)
-                        except: wrapped_v_bytes = wrapped_v_key.encode('utf-8')
-                else:
-                    # Puede ser Base64 directo o hex puro
-                    try: 
-                        wrapped_v_bytes = base64.b64decode(wrapped_v_key)
-                    except:
-                        # Intentar como hex puro
+                        # Postgres bytea may be hex: \\xdeadbeef
+                        hex_str = wrapped_v_key[2:]
+                        wrapped_v_bytes = bytes.fromhex(hex_str)
+                    except Exception:
                         try:
-                            wrapped_v_bytes = bytes.fromhex(wrapped_v_key)
-                        except:
-                            wrapped_v_bytes = wrapped_v_key.encode('utf-8')
+                            # Or it might be hex containing B64: \\x(B64_IN_HEX)
+                            ascii_b64 = bytes.fromhex(wrapped_v_key[2:]).decode('ascii')
+                            wrapped_v_bytes = base64.b64decode(ascii_b64)
+                        except Exception as e:
+                            self.logger.error(f"Error decoding wrapped_vault_key bytea: {e}")
+                            wrapped_v_bytes = None
+                else:
+                    # Generic string format
+                    try: wrapped_v_bytes = base64.b64decode(wrapped_v_key)
+                    except:
+                        try: wrapped_v_bytes = bytes.fromhex(wrapped_v_key)
+                        except: wrapped_v_bytes = wrapped_v_key.encode('utf-8')
             else:
                 wrapped_v_bytes = wrapped_v_key
         
         # [PRESERVACIÓN CRÍTICA] Si la nube no mandó wrapped_vault_key, mantenemos la local
+        # [HEALING] Si la sesión está rota, NO preservamos la local si hay una esperanza en la nube.
         if not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
-            wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
-            self.logger.info("Preservando Wrapped Vault Key local.")
+            if not session_is_broken:
+                wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
+                self.logger.info("Preservando Wrapped Vault Key local.")
+            else:
+                self.logger.warning("Session broken: Skipping preservation of corrupt local vault key.")
 
         # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
         # 1. Always stage cloud credentials in vault_access if different or new
@@ -263,7 +278,7 @@ class UserManager:
         # 2. DECISION: Do we trust the local primary credentials?
         # If we have a local key/salt pair, we keep them in the 'users' table (Primary).
         # This allows local resets to work immediately. set_active_user will handle fallbacks.
-        if local_profile and local_profile.get("wrapped_vault_key") and local_profile.get("vault_salt"):
+        if not session_is_broken and local_profile and local_profile.get("wrapped_vault_key") and local_profile.get("vault_salt"):
             local_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
             local_s_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
             
@@ -271,6 +286,8 @@ class UserManager:
                 self.logger.info("Preserving local Primary Vault Key (Cloud key staged in vault_access).")
                 wrapped_v_bytes = local_v_bytes
                 vault_salt_bytes = local_s_bytes # Salt must match the key
+        elif session_is_broken:
+            self.logger.info("Healing: Trusting Cloud Vault Key/Salt (Bypassing primary preservation).")
         elif not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
             wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
             vault_salt_bytes = self.sm._ensure_bytes(local_profile.get("vault_salt"))

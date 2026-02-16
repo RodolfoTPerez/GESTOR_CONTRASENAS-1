@@ -6,6 +6,9 @@ import logging
 import base64
 import hashlib
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
 from typing import Optional, Any, Dict, List, Tuple
 
 # Infrastructure imports
@@ -186,7 +189,7 @@ class SecretsManager:
         Extreme Recovery Protocol (V4.0)
         Tries combinations of salts, iterations, and legacy patterns.
         """
-        # 1. Salt Candidates
+        # 1. Salt Candidates (Enriquecido para Rescate Senior)
         salt_candidates = [
             current_salt,
             b"public_salt", 
@@ -195,44 +198,93 @@ class SecretsManager:
             username.upper().encode(),
             username.lower().encode(),
             username.encode(),
+            # [RESCUE] Try matching the text salt from profile if available
+            self.security.ensure_bytes(self.get_local_user_profile(username).get("salt")) if self.get_local_user_profile(username) else None,
             self.get_meta('master_salt') or b"",
             self.get_meta('salt') or b"",
             self.get_meta('vault_salt') or b"",
             self.session.current_vault_id.encode() if self.session.current_vault_id else None
         ]
         
-        # 2. Iteration Candidates
-        iteration_candidates = [100000, 50000, 10000, 200000]
+        # 2. Iteration Candidates (Prioridad máxima para velocidad)
+        iteration_candidates = [100000, 600000]
         
-        # Deduplicación y limpieza
+        # Deduplicación y limpieza profesional
         processed_salts = []
         for s in salt_candidates:
             b_s = self.security.ensure_bytes(s)
-            if b_s is not None and b_s not in processed_salts:
+            if b_s is not None and len(b_s) > 0 and b_s not in processed_salts:
                 processed_salts.append(b_s)
 
         total_trials = len(processed_salts) * len(iteration_candidates)
-        logger.info(f"[Forensic] Starting Extreme Recovery: {total_trials} combinations for {username}...")
+        logger.info(f"[Forensic] Starting Ultra Recovery V5.0: {total_trials} combinations for {username}...")
 
-        # 3. Trial loop
-        for iter_count in iteration_candidates:
+        # 3. Optimized Trial Loop (Level-based for performance)
+        password_candidates = [password, password.strip()]
+        trial_count = 0
+        
+        # LEVEL 1: Standard PBKDF2 (UTF-8, SHA256) - Most Likely
+        logger.info("[Forensic] Level 1: Standard PBKDF2 (UTF-8, SHA256)")
+        for p_cand in password_candidates:
+            for iter_count in iteration_candidates:
+                for salt in processed_salts:
+                    trial_count += 1
+                    if trial_count % 20 == 0:
+                        logger.info(f"[Forensic] Recovery Progress: {trial_count} trials completed...")
+                    try:
+                        kdf = PBKDF2HMAC(
+                            algorithm=hashes.SHA256(),
+                            length=32,
+                            salt=salt,
+                            iterations=iter_count,
+                            backend=default_backend()
+                        )
+                        kek = kdf.derive(p_cand.encode("utf-8"))
+                        dec_key = AESGCM(kek).decrypt(wrapped_key[:12], wrapped_key[12:], None)
+                        if dec_key and len(dec_key) == 32:
+                            logger.info(f"[Forensic] SUCCESS! PBKDF2 recovered | Iter: {iter_count}, Salt: {salt.hex()[:6]}")
+                            return self._heal_and_return(username, p_cand, dec_key, current_salt)
+                    except Exception: continue
+
+        # LEVEL 2: Legacy Raw Hashes (High Speed)
+        logger.info("[Forensic] Level 2: Legacy Raw Hashes (SHA256 Raw/Hex)")
+        for p_cand in password_candidates:
             for salt in processed_salts:
                 try:
-                    # We derive manually to try different iterations
-                    kek = CryptoEngine.derive_kek_from_password(password, salt, iterations=iter_count)
-                    
-                    nonce = wrapped_key[:12]
-                    ciphertext = wrapped_key[12:]
-                    dec_key = AESGCM(kek).decrypt(nonce, ciphertext, None)
-                    
+                    # Raw binary concat
+                    raw_key = hashlib.sha256(p_cand.encode('utf-8') + salt).digest()
+                    dec_key = AESGCM(raw_key).decrypt(wrapped_key[:12], wrapped_key[12:], None)
                     if dec_key and len(dec_key) == 32:
-                        logger.info(f"[Forensic] CRITICAL SUCCESS! Key recovered with Salt: {salt.hex()[:6]}... Iterations: {iter_count}")
-                        # Sanar inmediatamente
-                        new_wrap = self.security.wrap_key(dec_key, password, current_salt)
-                        self.users.update_vault_access(username, self.session.current_vault_id or "default", new_wrap)
-                        return dec_key
-                except Exception:
-                    continue
+                        logger.info(f"[Forensic] SUCCESS! Legacy Raw recovered | Salt: {salt.hex()[:6]}")
+                        return self._heal_and_return(username, p_cand, dec_key, current_salt)
+                    
+                    # Hex text concat
+                    hex_key = hashlib.sha256((p_cand + salt.hex()).encode('utf-8')).digest()
+                    dec_key = AESGCM(hex_key).decrypt(wrapped_key[:12], wrapped_key[12:], None)
+                    if dec_key and len(dec_key) == 32:
+                        logger.info(f"[Forensic] SUCCESS! Legacy Hex recovered | Salt: {salt.hex()[:6]}")
+                        return self._heal_and_return(username, p_cand, dec_key, current_salt)
+                except Exception: continue
+
+        # [PERFORMANCE] Level 3 disabled for synchronous login to prevent blocking.
+        logger.warning(f"[Forensic] Fast recovery failed for {username}. Deep scan skipped to restore responsiveness.")
+        
+        return None
+        
+        return None
+        
+        return None
+
+    def _heal_and_return(self, username: str, password: str, dec_key: bytes, current_salt: bytes) -> bytes:
+        """Sana la llave local re-envolviéndola con parámetros estándar."""
+        try:
+             new_wrap = self.security.wrap_key(dec_key, password, current_salt)
+             self.users.update_vault_access(username, self.session.current_vault_id or "default", new_wrap)
+             self.users.db.commit()
+             logger.info(f"[Forensic] Vault key healed and persisted for {username}")
+        except Exception as e:
+             logger.error(f"Heal persistence failed: {e}")
+        return dec_key
         
         return None
 
@@ -543,11 +595,11 @@ class SecretsManager:
 
     def wrap_key(self, data: Any, password: str, salt: Any) -> bytes: return self.security.wrap_key(data, password, salt)
     def unwrap_key(self, wrapped_data: Any, password: str, salt: Any) -> bytes: return self.security.unwrap_key(wrapped_data, password, salt)
-    def save_vault_access_local(self, vault_id: str, wrapped_key: bytes, synced: int = 0) -> bool: 
+    def save_vault_access_local(self, vault_id: str, wrapped_key: bytes, synced: int = 0, force: bool = False, vault_salt: Optional[bytes] = None) -> bool: 
         if not self.session.current_user:
             logger.warning("Intentando guardar acceso a bóveda sin usuario activo.")
             return False
-        return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key, synced=synced)
+        return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key, synced=synced, force=force, vault_salt=vault_salt)
 
     def change_login_password(self, old_password: str, new_password: str, user_manager: Optional[Any] = None, progress_callback: Optional[Any] = None) -> None:
         """

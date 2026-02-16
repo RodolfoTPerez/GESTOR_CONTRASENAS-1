@@ -60,20 +60,26 @@ class UserRepository:
         placeholders = ", ".join(["?"] * len(vals))
         self.db.execute(f"INSERT OR REPLACE INTO users ({', '.join(cols)}) VALUES ({placeholders})", tuple(vals))
         self.db.commit()
-    def update_vault_access(self, username: str, vault_id: str, wrapped_key: bytes, synced: int = 0) -> bool:
+    def update_vault_access(self, username: str, vault_id: str, wrapped_key: bytes, synced: int = 0, force: bool = False, vault_salt: Optional[bytes] = None) -> bool:
         try:
             # [FIX] Ensure wrapped_key is bytes
             if isinstance(wrapped_key, str):
                 wrapped_key = bytes.fromhex(wrapped_key)
             
             # 1. Update legacy users table (Active Vault)
-            self.db.execute(
-                "UPDATE users SET vault_id = ?, wrapped_vault_key = ? WHERE UPPER(username) = ?",
-                (vault_id, sqlite3.Binary(wrapped_key), str(username).upper())
-            )
+            if vault_salt:
+                self.db.execute(
+                    "UPDATE users SET vault_id = ?, wrapped_vault_key = ?, vault_salt = ? WHERE UPPER(username) = ?",
+                    (vault_id, sqlite3.Binary(wrapped_key), sqlite3.Binary(vault_salt), str(username).upper())
+                )
+            else:
+                self.db.execute(
+                    "UPDATE users SET vault_id = ?, wrapped_vault_key = ? WHERE UPPER(username) = ?",
+                    (vault_id, sqlite3.Binary(wrapped_key), str(username).upper())
+                )
             
             # 2. Update new vault_access table (Multi-Vault Support)
-            self.save_vault_access(vault_id, wrapped_key, synced=synced)
+            self.save_vault_access(vault_id, wrapped_key, synced=synced, force=force)
             
             self.db.commit()
             return True
@@ -81,7 +87,7 @@ class UserRepository:
             logger.error(f"Error updating vault access for '{username}': {e}")
             return False
 
-    def save_vault_access(self, vault_id: str, wrapped_key: bytes, access_level: str = "member", synced: int = 0) -> bool:
+    def save_vault_access(self, vault_id: str, wrapped_key: bytes, access_level: str = "member", synced: int = 0, force: bool = False) -> bool:
         """Persists or updates access to a specific vault with conflict resolution."""
         try:
             import time
@@ -90,7 +96,7 @@ class UserRepository:
             
             # [CONFLICT RESOLUTION]
             # If we are trying to save a cloud record (synced=1), check if local has an unsynced one (synced=0)
-            if synced == 1:
+            if synced == 1 and not force:
                 local = self.get_vault_access(vault_id)
                 if local and local.get("synced") == 0:
                     logger.info(f"Conflict: Unsynced local vault key for {vault_id} exists. Rejecting cloud overwrite.")

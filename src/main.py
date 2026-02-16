@@ -132,7 +132,7 @@ def _handle_login_success(app, sm, um, master_password, user_profile):
             # Sincronizamos el perfil y las llaves de acceso ANTES de intentar el unwrap en set_active_user
             # Esto evita el error de "Blocked Key" si hubo un cambio de clave en otro dispositivo o sesión
             if user_profile.get('id'):
-                sync._sync_shared_keys(cloud_user_id=user_profile['id'])
+                sync._sync_shared_keys(cloud_user_id=user_profile['id'], username=username)
             else:
                 # Fallback por si no tenemos ID
                 um.sync_user_to_local(username, user_profile)

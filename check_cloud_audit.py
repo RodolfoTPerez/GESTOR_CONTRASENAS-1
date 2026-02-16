@@ -1,23 +1,25 @@
-import requests
-import json
+import os
+from supabase import create_client
+from dotenv import load_dotenv
 
-URL = "https://htktaodjjxfsqsqedylu.supabase.co"
-KEY = "sb_publishable_wokz-BbGYIvuc4Kvaz3qXg_vrkmg_yA"
+load_dotenv()
 
-def check_cloud_audit():
-    headers = {
-        "apikey": KEY,
-        "Authorization": f"Bearer {KEY}",
-        "Content-Type": "application/json"
-    }
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+def check_audit():
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     
-    print("\n--- CLOUD AUDIT_LOG (KIKI) ---")
-    url = f"{URL}/rest/v1/audit_log?user_name=ilike.KIKI&select=*"
-    r = requests.get(url, headers=headers)
-    if r.status_code == 200:
-        print(json.dumps(r.json(), indent=2))
-    else:
-        print(f"Error: {r.status_code} - {r.text}")
+    print("--- RECENT AUDIT LOGS FOR RODOLFO ---")
+    res = supabase.table("security_audit")\
+        .select("*")\
+        .ilike("user_name", "RODOLFO")\
+        .order("timestamp", desc=True)\
+        .limit(20)\
+        .execute()
+    
+    for log in res.data:
+        print(f"[{log.get('timestamp')}] Action: {log.get('action')} | Status: {log.get('status')} | Details: {log.get('details')}")
 
 if __name__ == "__main__":
-    check_cloud_audit()
+    check_audit()

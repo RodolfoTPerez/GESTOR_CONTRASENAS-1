@@ -123,7 +123,20 @@ class SyncManager:
     def sync(self, progress_callback=None, cloud_user_id=None):
         if not self.check_internet(): raise ConnectionError("No internet.")
         self._refresh_identity_headers()
-        self._sync_shared_keys(cloud_user_id)
+        # Fetch user profile to get the cloud_user_id and username for _sync_shared_keys
+        username = self.sm.current_user
+        user_profile = {}
+        if username:
+            res = self.client.get_records("users", f"select=id&username=ilike.{username}")
+            if res:
+                user_profile = res[0]
+
+        if user_profile.get('id'):
+            self._sync_shared_keys(cloud_user_id=user_profile['id'], username=username)
+        else:
+            # Fallback to existing behavior if user profile not found or no ID
+            self._sync_shared_keys(cloud_user_id=cloud_user_id)
+        
         self.sm.refresh_vault_context()
 
         if progress_callback: progress_callback(5, "Checking for changes...")
@@ -140,12 +153,15 @@ class SyncManager:
         if progress_callback: progress_callback(100, f"Sync finished. ↑{uploaded['success']} ↓{downloaded}")
         return {"uploaded": uploaded["success"], "downloaded": downloaded, "errors": uploaded["failed"]}
 
-    def _sync_shared_keys(self, cloud_user_id=None):
+    def _sync_shared_keys(self, cloud_user_id=None, username=None):
         try:
             u_id = cloud_user_id
-            if not u_id:
-                res = self.client.get_records("users", f"select=id&username=ilike.{self.sm.current_user}")
+            active_user = username or self.sm.current_user
+            
+            if not u_id and active_user:
+                res = self.client.get_records("users", f"select=id&username=ilike.{active_user}")
                 if res: u_id = res[0]['id']
+            
             if not u_id: return
 
             # [HEALING] Ensure local profile (and vault_salt) is synced before key unwrap attempts
@@ -153,8 +169,10 @@ class SyncManager:
             from src.infrastructure.user_manager import UserManager
             um = UserManager(self.sm)
             cloud_profile = self.client.get_records("users", f"select=*&id=eq.{u_id}")
+            cloud_salt = None
             if cloud_profile:
-                um.sync_user_to_local(self.sm.current_user, cloud_profile[0])
+                # Capture the normalized salt from user manager
+                cloud_salt = um.sync_user_to_local(active_user, cloud_profile[0])
 
             accesses = self.client.get_records("vault_access", f"select=*&user_id=eq.{u_id}")
             for acc in accesses:
@@ -162,7 +180,19 @@ class SyncManager:
                 w_key = acc.get("wrapped_master_key")
                 if v_id and w_key:
                     logger.info(f"[Sync] Persisting access to vault {v_id}")
-                    self.sm.save_vault_access_local(v_id, bytes.fromhex(w_key) if isinstance(w_key, str) else w_key, synced=1)
+                    # [HEALING] If the current session has no vault key, it's likely a sync conflict 
+                    # preventing recovery. We force the cloud key if the local unwrap failed.
+                    force_update = (self.sm.vault_key is None)
+                    if force_update:
+                        logger.info(f"[Sync] Local vault key missing or broken. Forcing cloud key overwrite for {v_id}.")
+                    
+                    self.sm.save_vault_access_local(
+                        v_id, 
+                        bytes.fromhex(w_key) if isinstance(w_key, str) else w_key, 
+                        synced=1,
+                        force=force_update,
+                        vault_salt=cloud_salt if force_update else None
+                    )
         except Exception as e: logger.error(f"Error syncing keys: {e}")
 
     def _push_local_to_cloud(self):
