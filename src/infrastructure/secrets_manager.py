@@ -831,59 +831,95 @@ class SecretsManager:
 
     def admin_reset_user_identity(self, target_username: str, new_password: str, user_manager: Optional[Any] = None, progress_callback: Optional[Any] = None) -> None:
         """
-        [ADMIN PROTOCOL] Force-resets a user identity.
-        Generates a NEW Personal Key and re-wraps shared vault keys that the Admin can access.
+        [ADMIN PROTOCOL - SMART UNIFIED RESET] 
+        Force-resets a user identity using the same robust logic as the rotation engine.
         """
-        logger.info(f"Admin Force-Reset for user {target_username} initiated.")
+        is_self_reset = (target_username.upper() == (self.session.current_user or "").upper())
+        logger.info(f"Admin Force-Reset for {target_username} (Self={is_self_reset}).")
         
-        # 1. Generate new salts and hash
+        # 1. New identity parameters
         new_salt = os.urandom(16).hex()
         new_hash, _ = CryptoEngine.hash_user_password(new_password, bytes.fromhex(new_salt))
         new_v_salt = os.urandom(16)
         
-        # 2. SEPARATE IDENTITY: Generate a NEW Personal Key (The old one is lost without old password)
-        new_personal_key = os.urandom(32)
-        new_protected_key = self.security.wrap_key(new_personal_key, new_password, new_v_salt)
-        
-        # 3. VAULT RECOVERY: Identify all shared vaults where Admin belongs
-        # We can only re-wrap vaults that the admin currently has open in their session
-        admin_vault_id = self.session.current_vault_id
-        admin_vault_key = self.session.vault_key
-        
-        rehashed_vaults = []
-        if admin_vault_id and admin_vault_key:
-            logger.info(f"Adding current vault {admin_vault_id} to the reset scope.")
-            new_wrap = self.security.wrap_key(admin_vault_key, new_password, new_v_salt)
-            rehashed_vaults.append((admin_vault_id, new_wrap, "member")) # Default to member for safety
+        # 2. Identity key preservation
+        if is_self_reset and self.session.personal_key:
+             target_personal_key = self.session.personal_key
+             logger.info("Preserving identity from active session.")
+        else:
+             # Generamos una nueva identidad personal (SVK) para el usuario
+             target_personal_key = os.urandom(32)
+             logger.warning(f"Generating NEW personal identity key for {target_username}.")
 
-        # 4. Sync to Cloud
+        new_protected_key = self.security.wrap_key(target_personal_key, new_password, new_v_salt)
+        
+        # 3. ROBUST VAULT RE-WRAPPING
+        all_accesses = self.users.get_all_vault_accesses()
+        rehashed_vaults = []
+        
+        for acc in all_accesses:
+            v_id = acc['vault_id']
+            try:
+                m_key = None
+                # Path 1: Session Memory (Strongest)
+                if v_id and self.session.current_vault_id and str(v_id).lower() == str(self.session.current_vault_id).lower():
+                    if self.session.vault_key: 
+                        m_key = bytes(self.session.vault_key)
+                
+                # Path 2: Local DB Fallback (Si el admin no tiene la llave en RAM pero sí en su DB local)
+                if not m_key:
+                    va_local = self.users.get_vault_access(v_id)
+                    if va_local and va_local.get("wrapped_master_key"):
+                        # NOTA: Esto solo funcionará si el admin tiene acceso a esta bóveda también
+                        # y su llave está activa. 
+                        if self.session.vault_key:
+                            m_key = bytes(self.session.vault_key)
+
+                if m_key:
+                    new_wrap = self.security.wrap_key(m_key, new_password, new_v_salt)
+                    rehashed_vaults.append((v_id, new_wrap, acc.get('access_level', 'member')))
+                    logger.info(f"Vault {v_id} re-wrapped for {target_username}")
+            except Exception as e:
+                logger.error(f"Admin reset failed to re-wrap vault {v_id}: {e}")
+
+        # 4. Atomic Sync to Cloud
         if user_manager:
-            if progress_callback: progress_callback(10, 100, 0, 0)
+            if progress_callback: progress_callback(20, 100, 0, 0)
             
-            # Update user profile
+            # Verificamos que el usuario existe en la nube
+            target_profile = user_manager.validate_user_access(target_username)
+            if not target_profile or not target_profile.get("exists"):
+                raise RuntimeError(f"El usuario {target_username} no existe en la nube.")
+            
+            target_uid = target_profile.get("id")
+
+            # A. Actualizar Perfil (Login/Auth)
             success, msg = user_manager.update_user_password(
-                target_username, 
-                new_password,
+                target_username, new_password,
                 new_protected_key=base64.b64encode(new_protected_key).decode('ascii'),
                 new_vault_salt=base64.b64encode(new_v_salt).decode('ascii')
             )
-            if not success:
-                raise RuntimeError(f"Cloud profile sync failed: {msg}")
+            if not success: raise RuntimeError(f"Fallo al actualizar perfil en nube: {msg}")
 
-            if progress_callback: progress_callback(50, 100, 1, 0)
-
-            # Sync vault access for the target user
+            # B. Actualizar Bóvedas (Acceso/Decryption) - USANDO UPSERT RESILIENTE
             if rehashed_vaults:
-                target_uid_res = user_manager.supabase.table("users").select("id").eq("username", target_username.upper()).execute()
-                if target_uid_res.data:
-                    target_uid = target_uid_res.data[0]['id']
-                    cloud_map = [(v_id, w_key.hex()) for v_id, w_key, lvl in rehashed_vaults]
-                    user_manager.update_bulk_vault_access(target_uid, cloud_map)
+                cloud_map = [(v_id, w_key.hex()) for v_id, w_key, lvl in rehashed_vaults]
+                user_manager.update_bulk_vault_access(target_uid, cloud_map)
             
             if progress_callback: progress_callback(100, 100, 1, 0)
 
-        # 5. Log and metadata
-        self.log_event("ADMIN_RESET_PASSWORD", details=f"Identity for {target_username} force-reset by administrator.")
+        # 5. Local Persistence (Self-healing si es el propio admin el que se cambia la clave)
+        if is_self_reset:
+             self.session.master_key = self.security.derive_keke(new_password, new_v_salt)
+             self.session.personal_key = target_personal_key
+             self.users.db.execute("UPDATE users SET password_hash = ?, salt = ?, vault_salt = ?, protected_key = ? WHERE UPPER(username) = ?",
+                                  (new_hash, new_salt, sqlite3.Binary(new_v_salt), sqlite3.Binary(new_protected_key), target_username.upper()))
+             # También actualizar acceso local
+             for v_id, w_key, lvl in rehashed_vaults:
+                  self.users.save_vault_access(v_id, w_key, access_level=lvl, synced=1, force=True)
+             self.users.db.commit()
+
+        self.log_event("ADMIN_RESET_PASSWORD", details=f"Identity and vaults for {target_username} rotated via Admin Console.")
 
 
     def attempt_legacy_recovery(self) -> Tuple[int, str]:

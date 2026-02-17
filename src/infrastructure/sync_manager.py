@@ -24,6 +24,106 @@ class SyncManager:
     def check_internet(self):
         return self.client.check_internet()
 
+    def sync_pending_users(self):
+        """Sincroniza usuarios creados offline (synced=0) a Supabase."""
+        if not self.check_internet():
+            logger.warning("[User Sync] No internet, skipping pending user sync")
+            return 0
+        
+        try:
+            # Buscar usuarios pendientes de sincronización
+            cursor = self.sm.conn.execute("""
+                SELECT username, password_hash, salt, vault_salt, role, protected_key, vault_id, user_id
+                FROM users 
+                WHERE synced = 0
+            """)
+            pending_users = cursor.fetchall()
+            
+            if not pending_users:
+                return 0
+            
+            synced_count = 0
+            for row in pending_users:
+                username = row[0]
+                try:
+                    # Preparar payload para Supabase
+                    import base64
+                    payload = {
+                        "username": username,
+                        "password_hash": row[1],
+                        "salt": row[2],
+                        "vault_salt": row[3],
+                        "role": row[4] or "user",
+                        "active": True,
+                        "vault_id": row[6]
+                    }
+                    
+                    # Agregar protected_key si existe
+                    if row[5]:
+                        protected_bytes = self.sm._ensure_bytes(row[5])
+                        payload["protected_key"] = base64.b64encode(protected_bytes).decode('ascii')
+                    
+                    # Insertar en Supabase
+                    res = self.client.supabase.table("users").insert(payload).execute()
+                    if not res.data:
+                        logger.error(f"[User Sync] Failed to sync user {username}: No data returned")
+                        continue
+                    
+                    # Obtener el ID real de Supabase
+                    real_user_id = res.data[0]["id"]
+                    logger.info(f"[User Sync] User {username} synced to Supabase with ID {real_user_id}")
+                    
+                    # Sincronizar vault_access si existe protected_key
+                    if row[5] and row[6]:
+                        try:
+                            protected_bytes = self.sm._ensure_bytes(row[5])
+                            vault_payload = {
+                                "user_id": real_user_id,
+                                "vault_id": row[6],
+                                "wrapped_master_key": protected_bytes.hex()
+                            }
+                            self.client.supabase.table("vault_access").upsert(vault_payload).execute()
+                            logger.info(f"[User Sync] Vault access synced for {username}")
+                        except Exception as va_err:
+                            logger.error(f"[User Sync] Failed to sync vault_access for {username}: {va_err}")
+                    
+                    # Actualizar registro local con ID real y marcar como sincronizado
+                    self.sm.conn.execute("""
+                        UPDATE users 
+                        SET user_id = ?, synced = 1 
+                        WHERE username = ?
+                    """, (real_user_id, username))
+                    self.sm.conn.commit()
+                    
+                    synced_count += 1
+                    
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if "23505" in err_str or "already exists" in err_str or "duplicate" in err_str:
+                        # Usuario ya existe en Supabase (conflicto)
+                        logger.warning(f"[User Sync] User {username} already exists in Supabase, marking as synced")
+                        # Intentar obtener el ID del usuario existente
+                        try:
+                            existing = self.client.supabase.table("users").select("id").eq("username", username).execute()
+                            if existing.data:
+                                real_id = existing.data[0]["id"]
+                                self.sm.conn.execute("UPDATE users SET user_id = ?, synced = 1 WHERE username = ?", (real_id, username))
+                                self.sm.conn.commit()
+                                synced_count += 1
+                        except:
+                            pass
+                    else:
+                        logger.error(f"[User Sync] Error syncing user {username}: {e}")
+            
+            if synced_count > 0:
+                logger.info(f"[User Sync] Successfully synced {synced_count} pending user(s)")
+            
+            return synced_count
+            
+        except Exception as e:
+            logger.error(f"[User Sync] Error in sync_pending_users: {e}")
+            return 0
+
     def check_supabase(self):
         return self.client.check_supabase(self.table)
 
@@ -68,6 +168,7 @@ class SyncManager:
                 "is_private": s.get("is_private", 0),
                 "synced": 1,
                 "vault_id": s.get("vault_id") or self.sm.current_vault_id,
+                "integrity_hash": s.get("integrity_hash"),
                 "version": s.get("version")
             }
             payload.append(item)
@@ -105,10 +206,18 @@ class SyncManager:
             if progress_callback and i % 5 == 0:
                 progress_callback(20 + int((i/total)*80), f"Restoring: {s.get('service')}")
             nonce, cipher = self._decode_secret(s.get("secret", ""))
+            
+            # Calculate integrity_hash if missing from cloud
+            integrity_hash = s.get("integrity_hash")
+            if not integrity_hash:
+                import hashlib
+                integrity_hash = hashlib.sha256(cipher).hexdigest()
+                logger.info(f"Generated missing integrity_hash during restore for {s.get('service')}: {integrity_hash[:16]}...")
+            
             params = (
                 s["service"], s["username"], cipher, nonce, int(time.time()),
                 1 if str(s.get("deleted")).lower() in ("1", "true", "t") else 0,
-                "restored", s.get("notes"), s.get("owner_name") or self.sm.current_user,
+                integrity_hash, s.get("notes"), s.get("owner_name") or self.sm.current_user,
                 1, 1 if str(s.get("is_private")).lower() in ("1", "true", "t") else 0,
                 s.get("vault_id"), s.get("id"), s.get("version")
             )
@@ -218,12 +327,20 @@ class SyncManager:
         for rr in remote:
             if rr["id"] in local_cloud_ids: continue
             nonce, cipher = self._decode_secret(rr["secret"])
+            
+            # Calculate integrity_hash if missing from cloud
+            integrity_hash = rr.get("integrity_hash")
+            if not integrity_hash:
+                import hashlib
+                integrity_hash = hashlib.sha256(cipher).hexdigest()
+                logger.info(f"Generated missing integrity_hash for {rr['service']}: {integrity_hash[:16]}...")
+            
             self.sm.add_secret_encrypted(
                 service=rr["service"],
                 username=rr["username"],
                 secret_blob=cipher,
                 nonce_blob=nonce,
-                integrity="",
+                integrity=integrity_hash,
                 notes=rr.get("notes"),
                 is_private=1 if str(rr.get("is_private")).lower() in ("1", "true", "t") else 0,
                 owner_name=rr.get("owner_name"),
@@ -236,26 +353,67 @@ class SyncManager:
             count += 1
         return count
 
+
     def _upload_record(self, rec):
-        c_id = rec.get("cloud_id") or self._ensure_cloud_id(rec)
+        c_id = rec.get("cloud_id")
+        
+        # Prepare the payload
         payload = {
-            "id": c_id, "service": rec["service"], "username": rec["username"],
+            "service": rec["service"], "username": rec["username"],
             "secret": self._encode_secret(rec["nonce_blob"], rec["secret_blob"]),
             "notes": rec.get("notes"), "updated_at": int(time.time()),
             "owner_name": str(rec.get("owner_name") or self.sm.current_user or "unknown").upper(),
             "is_private": rec.get("is_private", 0), "deleted": rec.get("deleted", 0),
             "vault_id": rec.get("vault_id") or self.sm.current_vault_id,
+            "integrity_hash": rec.get("integrity_hash") or rec.get("integrity"),
             "version": rec.get("version")
         }
-        self.client.post_records(self.table, [payload])
-        return True
+        
+        try:
+            if c_id:
+                # Record already exists in cloud - UPDATE it
+                url = f"{self.client.supabase_url}/rest/v1/{self.table}?id=eq.{c_id}"
+                headers = self.client.headers.copy()
+                headers["Prefer"] = "return=minimal"
+                
+                r = self.client.session.patch(url, headers=headers, json=payload)
+                if r.status_code not in (200, 204):
+                    logger.error(f"Failed to update record {c_id}: {r.status_code} - {r.text}")
+                    return False
+                logger.info(f"Updated record {c_id} in Supabase")
+            else:
+                # New record - INSERT it
+                c_id = self._ensure_cloud_id(rec)
+                payload["id"] = c_id
+                self.client.post_records(self.table, [payload])
+                logger.info(f"Inserted new record {c_id} in Supabase")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error uploading record: {e}")
+            return False
 
     def sync_single_record(self, record_id):
-        if not self.check_internet(): return
+        logger.info(f"[SYNC] sync_single_record called for ID: {record_id}")
+        if not self.check_internet():
+            logger.warning(f"[SYNC] No internet connection, skipping sync for record {record_id}")
+            return
+            
+        logger.info(f"[SYNC] Fetching record {record_id} from SQLite")
         row = self.sm.conn.execute("SELECT * FROM secrets WHERE id=?", (record_id,)).fetchone()
+        
         if row:
-            if self._upload_record(self._row_to_dict(row)):
+            logger.info(f"[SYNC] Record found, converting to dict")
+            rec_dict = self._row_to_dict(row)
+            logger.info(f"[SYNC] Record dict: service={rec_dict.get('service')}, cloud_id={rec_dict.get('cloud_id')}")
+            
+            if self._upload_record(rec_dict):
+                logger.info(f"[SYNC] Upload successful, marking as synced")
                 self.sm.mark_as_synced(record_id, 1)
+            else:
+                logger.error(f"[SYNC] Upload failed for record {record_id}")
+        else:
+            logger.error(f"[SYNC] Record {record_id} not found in SQLite")
 
     def _row_to_dict(self, row):
         """
@@ -263,14 +421,16 @@ class SyncManager:
         Basado en el esquema de DBManager v3.0:
         0:id, 1:service, 2:username, 3:secret, 4:nonce, 5:integrity, 6:notes, 
         7:updated, 8:deleted, 9:owner_name, 10:synced, 11:is_private, 12:vault_id,
-        13:key_type, 14:cloud_id, 15:owner_id
+        13:key_type, 14:cloud_id, 15:owner_id, 16:version
         """
         return {
-            "id": row[14] if len(row) > 14 and row[14] else None, # cloud_id
+            "id": row[0],  # Local SQLite ID
+            "cloud_id": row[14] if len(row) > 14 else None,  # Cloud UUID
             "service": row[1],
             "username": row[2],
             "secret_blob": row[3],
             "nonce_blob": row[4],
+            "integrity_hash": row[5],
             "notes": row[6],
             "owner_name": str(row[9]).upper() if len(row) > 9 else "UNKNOWN",
             "is_private": row[11] if len(row) > 11 else 0,
@@ -284,22 +444,57 @@ class SyncManager:
     def sync_audit_logs(self):
         if not self.check_internet(): return
         logs = self.sm.get_pending_audit_logs()
-        if logs:
-            # FIX: Mapping correcto según AuditRepository (l[6]=details, l[7]=device_info)
-            payload = []
-            for l in logs:
-                payload.append({
-                    "timestamp": l[1],
-                    "user_name": l[2],
-                    "action": l[3],
-                    "service": l[4],      # Antes 'target_user' (confuso)
-                    "status": l[5],
-                    "details": l[6],      # l[6] es el campo Details en SQLite
-                    "device_info": l[7],  # l[7] es el campo Device Info en SQLite
-                    "user_id": l[9]
-                })
+        if not logs: return
+        
+        # Get valid user_ids from Supabase to avoid foreign key violations
+        valid_user_ids = set()
+        try:
+            users_response = self.client.supabase.table("users").select("id").execute()
+            if users_response.data:
+                valid_user_ids = {u["id"] for u in users_response.data}
+        except Exception as e:
+            logger.warning(f"Could not fetch valid user_ids, syncing without validation: {e}")
+        
+        # FIX: Mapping correcto según AuditRepository (l[6]=details, l[7]=device_info)
+        payload = []
+        skipped_count = 0
+        for l in logs:
+            user_id = l[9]
+            
+            # Skip audit logs with invalid/orphaned user_id
+            if user_id and valid_user_ids and user_id not in valid_user_ids:
+                logger.warning(f"Skipping audit log with orphaned user_id: {user_id}")
+                skipped_count += 1
+                continue
+            
+            payload.append({
+                "timestamp": l[1],
+                "user_name": l[2],
+                "action": l[3],
+                "service": l[4],      # Antes 'target_user' (confuso)
+                "status": l[5],
+                "details": l[6],      # l[6] es el campo Details en SQLite
+                "device_info": l[7],  # l[7] es el campo Device Info en SQLite
+                "user_id": user_id
+            })
+        
+        if not payload:
+            logger.info(f"No valid audit logs to sync (skipped {skipped_count} orphaned)")
+            return
+        
+        try:
             self.client.post_records(self.audit_table, payload)
             self.sm.mark_audit_logs_as_synced()
+            if skipped_count > 0:
+                logger.info(f"Synced {len(payload)} audit logs, skipped {skipped_count} orphaned")
+        except Exception as e:
+            err_str = str(e).lower()
+            if "23503" in err_str or "foreign key" in err_str:
+                logger.error(f"Foreign key violation in audit sync (orphaned user_id): {e}")
+                # Mark as synced anyway to avoid infinite retry loop
+                self.sm.mark_audit_logs_as_synced()
+            else:
+                raise
 
     def get_global_audit_logs(self, limit=500):
         """Obtiene los logs de auditoría globales del nodo central (ADMIN ONLY)."""
@@ -384,7 +579,12 @@ class SyncManager:
             curr_user = (self.sm.current_user or "").upper()
             if not curr_user: return False
             
-            kicks = self.client.get_records(self.audit_table, f"select=id&action=eq.KICK&user_name=eq.{curr_user}&device_info=eq.{hostname}&limit=1")
+            # Solo buscar expulsiones en los últimos 15 minutos para permitir re-ingreso
+            recent_cutoff = int(time.time()) - 900
+            kicks = self.client.get_records(
+                self.audit_table, 
+                f"select=id&action=eq.KICK&user_name=eq.{curr_user}&device_info=eq.{hostname}&timestamp=gt.{recent_cutoff}&limit=1"
+            )
             return len(kicks) > 0
             
         except Exception as e:

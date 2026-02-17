@@ -642,7 +642,7 @@ class UserManager:
 
 
     def add_new_user(self, username: str, role: str, password: str = None):
-        """Crea un nuevo usuario con gestión profesional de llaves."""
+        """Crea un nuevo usuario con gestión profesional de llaves y soporte offline."""
         username_clean = username.upper().replace(" ", "")
         
         try:
@@ -656,26 +656,62 @@ class UserManager:
             # 3. Preparar payload para Cloud
             payload = self._build_user_payload(username_clean, role, keys, password)
 
-            # 4. Inserción en Supabase
-            res = self.supabase.table("users").insert(payload).execute()
-            if not res.data: return False, "Error al crear perfil en la nube."
+            # 4. Inserción en Supabase (con detección de offline)
+            try:
+                res = self.supabase.table("users").insert(payload).execute()
+                if not res.data: return False, "Error al crear perfil en la nube."
+                user_data = res.data[0]
+                is_offline = False
+            except Exception as net_err:
+                # Detectar errores de red
+                err_str = str(net_err).lower()
+                if any(x in err_str for x in ["getaddrinfo", "connection", "network", "timeout"]):
+                    self.logger.warning(f"Network unavailable, creating user offline: {net_err}")
+                    # Crear usuario localmente con ID temporal
+                    user_data = {
+                        "id": f"local_{username_clean}",  # Temporary ID
+                        "username": username_clean,
+                        "role": role,
+                        "active": True,
+                        "vault_id": keys["vault_id"],
+                        "password_hash": payload.get("password_hash"),
+                        "salt": payload.get("salt"),
+                        "vault_salt": payload.get("vault_salt"),
+                        "protected_key": payload.get("protected_key")
+                    }
+                    is_offline = True
+                else:
+                    # Otro tipo de error, no de red
+                    raise net_err
 
             # 5. Registrar acceso a bóveda y estabilizar localmente
-            user_data = res.data[0]
             if keys.get('protected'):
                 # Sincronizar acceso a bóveda localmente antes de terminar
                 if self.sm:
                     # Guardar en local vault_access para que el usuario pueda loguearse offline de inmediato
-                    self.sm.users.save_vault_access(keys['vault_id'], keys['protected'], synced=1)
+                    self.sm.users.save_vault_access(keys['vault_id'], keys['protected'], synced=1 if not is_offline else 0)
                 
-                # Sincronizar en la nube
-                self._register_vault_access(user_data['id'], keys['vault_id'], keys['protected'])
+                # Sincronizar en la nube (solo si online)
+                if not is_offline:
+                    self._register_vault_access(user_data['id'], keys['vault_id'], keys['protected'])
 
-            self.sync_user_to_local(username_clean, user_data)
-            if password:
+            # Guardar localmente con flag de sync
+            self._sync_user_to_local_with_flag(username_clean, user_data, synced=0 if is_offline else 1)
+            
+            # [FIX] Only set_active_user if this is the FIRST admin (no one is logged in)
+            # Otherwise, keep the current admin session active
+            is_first_admin = (role == "admin" and self.get_user_count() == 1)
+            if password and is_first_admin:
                 self.sm.set_active_user(username_clean, password)
+                self.logger.info(f"First admin created - session activated for {username_clean}")
+            else:
+                self.logger.info(f"Secondary user {username_clean} created - preserving current admin session")
 
-            return True, f"Usuario {username_clean} configurado correctamente."
+            if is_offline:
+                return True, f"Usuario {username_clean} creado localmente. Se sincronizará cuando haya conexión."
+            else:
+                return True, f"Usuario {username_clean} configurado correctamente."
+                
         except Exception as e:
             # [OFFLINE DETECTION] Detectar errores de red y dar mensaje claro
             err_str = str(e).lower()
@@ -684,6 +720,18 @@ class UserManager:
                 fallback_msg = MESSAGES.COMMON.ERR_OFFLINE if hasattr(MESSAGES, 'COMMON') and hasattr(MESSAGES.COMMON, 'ERR_OFFLINE') else "No hay conexión a internet."
                 return False, fallback_msg
             return self._handle_add_user_error(e, username_clean)
+
+    def _sync_user_to_local_with_flag(self, username, cloud_profile, synced=1):
+        """Wrapper for sync_user_to_local that adds synced flag."""
+        result = self.sync_user_to_local(username, cloud_profile)
+        # Update synced flag
+        if self.sm and self.sm.conn:
+            try:
+                self.sm.conn.execute("UPDATE users SET synced = ? WHERE username = ?", (synced, username.upper()))
+                self.sm.conn.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to set synced flag: {e}")
+        return result
 
 
     def _validate_new_user(self, username: str) -> Tuple[bool, str]:
@@ -711,25 +759,33 @@ class UserManager:
             protected = self.sm.wrap_key(new_master, password, v_salt)
             self.logger.info("Primer admin - Llave maestra generada.")
         else:
-            # Intentar obtener la llave del admin si está disponible
+            # [CRITICAL FIX] Para usuarios secundarios, DEBE haber una llave disponible
             target_key = None
-            if self.sm and self.sm.master_key:
-                target_key = self.sm.master_key
-            elif self.sm and self.sm.vault_key:
+            
+            # Prioridad 1: vault_key (la llave activa del vault actual)
+            if self.sm and self.sm.vault_key:
                 target_key = self.sm.vault_key
-            elif self.sm and vault_id:
-                # Fallback: intentar recuperar de vault_access local si el admin la tiene
-                va = self.sm.users.get_vault_access(vault_id)
-                if va and va.get("wrapped_master_key"):
-                    # Necesitamos la password del admin para esto... 
-                    # Pero el admin ya debería haberla desencriptado en su sesión.
-                    pass 
+                self.logger.info("Using active vault_key for secondary user")
+            # Prioridad 2: master_key (si está disponible)
+            elif self.sm and self.sm.master_key:
+                target_key = self.sm.master_key
+                self.logger.info("Using master_key for secondary user")
+            else:
+                # [CRITICAL] Si no hay llave en memoria, esto es un ERROR GRAVE
+                # No podemos crear un usuario sin compartir la llave del vault
+                error_msg = (
+                    f"Cannot create user {username}: No vault key available in current session. "
+                    "Admin must be logged in with active vault_key to create secondary users."
+                )
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
 
+            # Envolver la llave con la contraseña del nuevo usuario
             if target_key and password:
                 protected = self.sm.wrap_key(target_key, password, v_salt)
                 self.logger.info(f"Usuario secundario - Llave {'Maestra' if target_key == self.sm.master_key else 'de Bóveda'} enlazada.")
             else:
-                self.logger.warning("No se pudo enlazar llave: Admin no tiene llave activa en memoria.")
+                raise ValueError(f"Cannot wrap vault key for user {username}: missing target_key or password")
             
         return {"vault_id": vault_id, "v_salt": v_salt, "protected": protected}
 
@@ -1019,15 +1075,18 @@ class UserManager:
 
     def update_bulk_vault_access(self, user_id: str, vault_key_map: list) -> bool:
         """
-        Updates multiple vault access records in Supabase.
-        vault_key_map: List of tuples/dicts [(vault_id, wrapped_key_hex), ...]
+        Inyecta o actualiza múltiples accesos a bóvedas en Supabase (MODO RESILIENTE).
+        vault_key_map: Lista de tuplas [(vault_id, wrapped_key_hex), ...]
         """
         try:
             for v_id, w_key_hex in vault_key_map:
-                self.supabase.table("vault_access")\
-                    .update({"wrapped_master_key": w_key_hex})\
-                    .eq("user_id", user_id)\
-                    .eq("vault_id", v_id).execute()
+                # [SMART UPSERT] Si no existe el registro, SE CREA. Si existe, se actualiza la llave.
+                # Esto garantiza que el Kill Switch no expulse a usuarios recién reseteados.
+                self.supabase.table("vault_access").upsert({
+                    "user_id": user_id,
+                    "vault_id": v_id,
+                    "wrapped_master_key": w_key_hex
+                }, on_conflict="user_id,vault_id").execute()
             return True
         except Exception as e:
             self.logger.error(f"Error in update_bulk_vault_access: {e}")

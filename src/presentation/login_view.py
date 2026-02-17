@@ -68,6 +68,7 @@ class LoginView(QMainWindow):
         self.failed_attempts = 0
         self.locked_until = None
         self.reg_mode = False
+        self._drag_pos = None  # Initialize drag position for window dragging
 
         self.logger = logging.getLogger(__name__)
 

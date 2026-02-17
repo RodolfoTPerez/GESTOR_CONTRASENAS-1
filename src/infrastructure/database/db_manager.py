@@ -79,6 +79,7 @@ class DBManager:
             # Hotfix migrations logic (simplified but equivalent)
             migrations = [
                 ("users", "user_id", "TEXT"),
+                ("users", "synced", "INTEGER DEFAULT 1"),  # Track offline user creation sync
                 ("secrets", "owner_id", "TEXT"),
                 ("security_audit", "user_id", "TEXT"),
                 ("secrets", "cloud_id", "TEXT"),

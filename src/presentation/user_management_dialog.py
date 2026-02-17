@@ -1,13 +1,14 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
     QTableWidgetItem, QPushButton, QLineEdit, QLabel, 
-    QComboBox, QHeaderView, QFrame, QAbstractItemView, QInputDialog, QWidget, QProgressBar
+    QComboBox, QHeaderView, QFrame, QAbstractItemView, QInputDialog, QWidget, QProgressBar, QMessageBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 from src.domain.messages import MESSAGES
 from src.presentation.ui_utils import PremiumMessage
 from src.presentation.theme_manager import ThemeManager
+from src.presentation.change_password_dialog import ChangePasswordDialog
 
 class UserManagementDialog(QDialog):
     def __init__(self, user_manager, current_username, parent=None):
@@ -447,55 +448,32 @@ class UserManagementDialog(QDialog):
     def _on_reset_password(self, username):
         """
         Permite al admin resetear la clave maestra de un usuario.
-        [FIX CRÍTICO]: Inyecta una nueva copia de la Llave Maestra cifrada con la nueva clave.
+        [UNIFIED ARCHITECTURE]: Usa el motor ChangePasswordDialog para TODO.
         """
         if not self.user_manager.sm or not self.user_manager.sm.master_key:
              PremiumMessage.error(self, MESSAGES.USERS.TITLE_SEC_ERROR, MESSAGES.USERS.TEXT_SEC_ERROR)
              return
 
-        new_pwd, ok = QInputDialog.getText(
-            self, MESSAGES.USERS.TITLE_RESET_PW, 
-            MESSAGES.USERS.TEXT_RESET_PW.format(username=username), QLineEdit.Password
+        # Obtener perfiles para el motor
+        admin_profile = self.user_manager.sm.get_local_user_profile(self.admin_name)
+        
+        # Lanzar el Diálogo Premium Unificado
+        # Si username == admin_name, target_user será el admin (Auto-reset)
+        # Si no, target_user será el tercero (Admin Override)
+        dlg = ChangePasswordDialog(
+            self.user_manager.sm, 
+            self.user_manager, 
+            admin_profile, 
+            None, 
+            self,
+            target_user=username
         )
         
-        if ok and new_pwd:
-            if len(new_pwd) < 8:
-                PremiumMessage.error(self, MESSAGES.USERS.TITLE_ERROR, MESSAGES.USERS.TEXT_MIN_PWD)
-                return
-
-            # --- PROGRESS BAR SETUP ---
-            from PyQt5.QtWidgets import QProgressDialog, QApplication
-            progress = QProgressDialog(MESSAGES.USERS.PROG_START, "Cancelar", 0, 100, self)
-            progress.setWindowTitle(MESSAGES.USERS.PROG_TITLE)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setMinimumDuration(0)
-            progress.setStyleSheet("""
-                QProgressDialog { background-color: #1e293b; color: white; }
-                QProgressBar { border: 1px solid #334155; border-radius: 4px; text-align: center; background-color: #0f172a; color: white; }
-                QProgressBar::chunk { background-color: #8b5cf6; } 
-                QLabel { color: #e2e8f0; font-weight: bold; }
-            """)
-            progress.show()
-            progress.setValue(10)
-            QApplication.processEvents()
-            
-            try:
-                # 1. Start unified reset protocol
-                self.user_manager.sm.admin_reset_user_identity(
-                    username, 
-                    new_pwd, 
-                    self.user_manager, 
-                    progress_callback=lambda c, t, s, e: progress.setValue(c)
-                )
-                
-                progress.setValue(100)
-                progress.close()
-                PremiumMessage.success(self, MESSAGES.USERS.TITLE_SUCCESS, MESSAGES.USERS.TEXT_PW_UPDATED.format(username=username, count=0))
-
-            
-            except Exception as e:
-                progress.close()
-                PremiumMessage.error(self, MESSAGES.USERS.TITLE_ENC_ERROR, MESSAGES.USERS.TEXT_ENC_ERROR.format(error=str(e)))
+        # Efecto de transparencia táctica
+        dlg.setWindowOpacity(0.98)
+        
+        if dlg.exec_() == QDialog.Accepted:
+            self._refresh_data()
 
     def _on_delete_user(self, user_id, username, role):
         if role == "admin":

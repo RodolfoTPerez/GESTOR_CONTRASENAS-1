@@ -382,7 +382,7 @@
         "TEXT_REQ_FIELDS": "Complete all security vectors.",
         "TITLE_ERROR": "SECURITY ERROR",
         "TEXT_MIN_LENGTH": "Signature must exceed 12 characters for entropy.",
-        "TEXT_MISMATCH": "Integrity failure: Signatures mismatch.",
+        "TEXT_MISMATCH": "The entered signatures do not match. Please verify the fields.",
         "TEXT_2FA_WRONG": "2FA Token denied.",
         "TITLE_SUCCESS": "ROTATION SUCCESSFUL",
         "TEXT_SYNC_START": "🔄 Syncing partitions...",

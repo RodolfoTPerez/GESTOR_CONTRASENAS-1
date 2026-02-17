@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QProgressBar, QFrame, QApplication
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+    QPushButton, QProgressBar, QFrame, QApplication, QWidget
 )
 from PyQt5.QtCore import Qt
 from src.domain.messages import MESSAGES
@@ -8,13 +9,14 @@ from src.presentation.theme_manager import ThemeManager
 import logging
 
 class ChangePasswordDialog(QDialog):
-    def __init__(self, secrets_manager, user_manager, user_profile=None, sync_manager=None, parent=None):
+    def __init__(self, secrets_manager, user_manager, user_profile=None, sync_manager=None, parent=None, target_user=None):
         super().__init__(parent)
         self.logger = logging.getLogger(__name__)
         self.sm = secrets_manager
         self.user_manager = user_manager
         self.user_profile = user_profile or {}
         self.sync_manager = sync_manager
+        self.target_user = target_user # Si es None, es un auto-cambio. Si tiene valor, es un Admin Reset.
         
         username = self.user_profile.get("username", "Global")
         self.theme = ThemeManager()
@@ -30,80 +32,85 @@ class ChangePasswordDialog(QDialog):
         self.setStyleSheet(full_qss)
         
         self.setWindowTitle(MESSAGES.DASHBOARD.CHANGE_PWD)
-        self.setFixedSize(460, 680)
+        self.setFixedSize(460, 720) 
 
-        self.sm = secrets_manager
-        self.user_manager = user_manager
-        self.user_profile = user_profile or {}
-        self.sync_manager = sync_manager
-        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(35, 30, 35, 30)
         layout.setSpacing(10)
 
-        # Added a status label for sync
+        # Status label for sync
         self.lbl_sync_status = QLabel("")
         self.lbl_sync_status.setObjectName("dialog_subtitle")
         self.lbl_sync_status.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.lbl_sync_status)
 
-        # Encabezado simple
-        title = QLabel(f"🔑 {MESSAGES.DASHBOARD.CHANGE_PWD}")
+        # Encabezado con Identidad Dinámica
+        header_text = MESSAGES.DASHBOARD.CHANGE_PWD
+        if self.target_user and self.target_user.upper() != username.upper():
+            # [i18n] Admin Override Title
+            header_text = MESSAGES.ADMIN.get("TITLE_PROTOCOL", "ADMIN OVERRIDE").upper() + f": {self.target_user}"
+            
+        title = QLabel(f"🔑 {header_text}")
         title.setObjectName("dialog_title")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # 1. Clave actual
-        layout.addWidget(QLabel(f"{MESSAGES.LOGIN.SUBTITLE}:"))
-        self.input_current = QLineEdit()
-        self.input_current.setEchoMode(QLineEdit.Password)
-        self.input_current.setPlaceholderText("••••••••••••")
-        layout.addWidget(self.input_current)
+        # 1. Clave de Autorización
+        auth_label = MESSAGES.LOGIN.SUBTITLE
+        if self.target_user and self.target_user.upper() != username.upper():
+            # [i18n] Clearer Admin Auth Label
+            auth_label = MESSAGES.ADMIN.get("TITLE_AUTH_L1", "ADMIN AUTHORIZATION") 
+            
+        layout.addWidget(QLabel(f"{auth_label}:"))
+        self.input_current, self.btn_view_cur = self._create_password_field("••••••••••••")
+        layout.addLayout(self._wrap_input(self.input_current, self.btn_view_cur))
 
         layout.addSpacing(10)
 
         # 2. Nueva clave
-        layout.addWidget(QLabel(f"{MESSAGES.LOGIN.TITLE_NEW_ACCOUNT}:"))
-        self.input_new = QLineEdit()
-        self.input_new.setEchoMode(QLineEdit.Password)
-        self.input_new.setPlaceholderText(MESSAGES.SECURITY.TEXT_MIN_LENGTH)
+        new_label = MESSAGES.LOGIN.TITLE_NEW_ACCOUNT
+        if self.target_user and self.target_user.upper() != username.upper():
+            # [i18n] Specific new password label for the user
+            new_label = MESSAGES.USERS.get("TITLE_RESET_PW", "NEW SIGNATURE FOR").replace("{username}", self.target_user)
+            if "{username}" not in MESSAGES.USERS.get("TITLE_RESET_PW", ""):
+                new_label = f"{new_label}: {self.target_user}"
+            
+        layout.addWidget(QLabel(f"{new_label}:"))
+        self.input_new, self.btn_view_new = self._create_password_field(MESSAGES.SECURITY.TEXT_MIN_LENGTH)
         self.input_new.textChanged.connect(self._update_strength)
-        layout.addWidget(self.input_new)
+        layout.addLayout(self._wrap_input(self.input_new, self.btn_view_new))
         
-        # Barra de fuerza (Simplificada)
+        # Barra de fuerza
         self.strength_bar = QProgressBar()
         self.strength_bar.setValue(0)
         self.strength_bar.setFixedHeight(6)
         layout.addWidget(self.strength_bar)
         
-        self.strength_txt = QLabel(MESSAGES.DASHBOARD.get("COL_LEVEL", "Strenght") + ": ---")
+        # [i18n] Strength label
+        strength_lbl = MESSAGES.CARDS.get("SECURITY_SCORE", "Security")
+        self.strength_txt = QLabel(f"{strength_lbl}: ---")
         self.strength_txt.setObjectName("dialog_subtitle")
         layout.addWidget(self.strength_txt)
 
-
-        layout.addWidget(QLabel(MESSAGES.LOGIN.get("TITLE_CONFIRM_PWD", "Verify") + ":"))
-        self.input_confirm = QLineEdit()
-        self.input_confirm.setEchoMode(QLineEdit.Password)
-        self.input_confirm.setPlaceholderText("••••••••••••")
-        layout.addWidget(self.input_confirm)
+        # [i18n] Confirmation label (Fixing fallback bug)
+        conf_label = MESSAGES.LOGIN.get("TITLE_CONFIRM_PWD", MESSAGES.LOGIN.get("TEXT_CONFIRM_PWD", "Verify"))
+        layout.addWidget(QLabel(f"{conf_label}:"))
+        self.input_confirm, self.btn_view_conf = self._create_password_field("••••••••••••")
+        layout.addLayout(self._wrap_input(self.input_confirm, self.btn_view_conf))
 
         layout.addSpacing(15)
 
-        # 3. 2FA [DISABLED] - Campo oculto
-        self.lbl_2fa = QLabel(MESSAGES.TWOFACTOR.LABEL_TOKEN)
-        self.lbl_2fa.setVisible(False)
-        layout.addWidget(self.lbl_2fa)
+        # 3. 2FA (Oculto)
         self.input_2fa = QLineEdit()
-        self.input_2fa.setObjectName("edit_disabled")
         self.input_2fa.setVisible(False)
         layout.addWidget(self.input_2fa)
 
-        # 4. Barra de Progreso de Re-encriptación (NUEVO)
+        # 4. Barra de Progreso de Re-encriptación
         self.process_bar = QProgressBar()
         self.process_bar.setRange(0, 100)
         self.process_bar.setValue(0)
         self.process_bar.setFixedHeight(12)
-        self.process_bar.setTextVisible(False) # Texto lo manejamos en el label para más detalle
+        self.process_bar.setTextVisible(False)
         self.process_bar.setVisible(False)
         layout.addWidget(self.process_bar)
         
@@ -113,112 +120,134 @@ class ChangePasswordDialog(QDialog):
         self.lbl_process.setVisible(False)
         layout.addWidget(self.lbl_process)
 
-        # Botón
-        self.btn_change = QPushButton(MESSAGES.COMMON.TITLE_SUCCESS.upper())
+        # Botón dinámico [i18n]
+        btn_txt = MESSAGES.COMMON.get("BTN_YES", "EXECUTE") if self.target_user else MESSAGES.COMMON.TITLE_SUCCESS.upper()
+        self.btn_change = QPushButton(btn_txt)
         self.btn_change.setObjectName("btn_primary")
         self.btn_change.clicked.connect(self._on_change)
         layout.addWidget(self.btn_change)
 
+    def _create_password_field(self, placeholder):
+        edit = QLineEdit()
+        edit.setEchoMode(QLineEdit.Password)
+        edit.setPlaceholderText(placeholder)
+        btn = QPushButton("👁️")
+        btn.setObjectName("btn_icon")
+        btn.setFixedSize(35, 35)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.clicked.connect(lambda: self._toggle_visibility(edit, btn))
+        return edit, btn
+
+    def _wrap_input(self, edit, btn):
+        h_layout = QHBoxLayout()
+        h_layout.setSpacing(5)
+        h_layout.addWidget(edit)
+        h_layout.addWidget(btn)
+        return h_layout
+
+    def _toggle_visibility(self, edit, btn):
+        if edit.echoMode() == QLineEdit.Password:
+            edit.setEchoMode(QLineEdit.Normal)
+            btn.setText("🙈")
+        else:
+            edit.setEchoMode(QLineEdit.Password)
+            btn.setText("👁️")
+
     def _update_strength(self, pwd):
-        # Cálculo de fuerza
         strength = 0
         if len(pwd) >= 8: strength += 25
         if len(pwd) >= 12: strength += 25
         if any(c.isupper() for c in pwd) and any(c.islower() for c in pwd): strength += 25
         if any(c.isdigit() for c in pwd) or any(not c.isalnum() for c in pwd): strength += 25
-        
         self.strength_bar.setValue(strength)
         
-        if strength <= 25: color, text = self.colors["danger"], "Baja"
-        elif strength <= 50: color, text = self.colors["warning"], "Media"
-        elif strength <= 75: color, text = self.colors["success"], "Fuerte"
-        else: color, text = self.colors["primary"], "Excelente"
+        # [i18n] Dynamic strength texts
+        if strength <= 25: 
+            color, text = self.colors["danger"], MESSAGES.SERVICE.get("STRENGTH_WEAK", "Weak")
+        elif strength <= 50: 
+            color, text = self.colors["warning"], MESSAGES.SERVICE.get("STRENGTH_MEDIUM", "Medium")
+        elif strength <= 75: 
+            color, text = self.colors["success"], MESSAGES.SERVICE.get("STRENGTH_STRONG", "Strong")
+        else: 
+            color, text = self.colors["primary"], MESSAGES.SERVICE.get("STRENGTH_SECURE", "Excellent")
             
         self.strength_bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {color}; border-radius: 3px; }}")
-        self.strength_txt.setText(f"Seguridad: {text}")
+        
+        strength_lbl = MESSAGES.CARDS.get("SECURITY_SCORE", "Security")
+        self.strength_txt.setText(f"{strength_lbl}: {text}")
         self.strength_txt.setStyleSheet(f"color: {color}; font-weight: 900;")
 
     def _on_change(self):
-        cur = self.input_current.text().strip()
-        new = self.input_new.text().strip()
-        ver = self.input_confirm.text().strip()
-        token = self.input_2fa.text().strip()
+        auth_pwd = self.input_current.text().strip()
+        new_pwd = self.input_new.text().strip()
+        ver_pwd = self.input_confirm.text().strip()
 
-        # [DISABLED] 2FA no es requerido - Solo validar campos básicos
-        if not cur or not new or not ver:
-            PremiumMessage.info(self, MESSAGES.SECURITY.TITLE_REQUIRED, "Por favor completa todos los campos requeridos.")
+        # [i18n] Error handling
+        if not auth_pwd or not new_pwd or not ver_pwd:
+            PremiumMessage.info(self, MESSAGES.SECURITY.TITLE_REQUIRED, MESSAGES.LOGIN.get("TEXT_INCOMPLETE", "Complete all signatures."))
             return
 
-        if len(new) < 12:
+        if len(new_pwd) < 12:
             PremiumMessage.info(self, MESSAGES.COMMON.TITLE_INFO, MESSAGES.SECURITY.TEXT_MIN_LENGTH)
             return
 
-        if new != ver:
+        if new_pwd != ver_pwd:
             PremiumMessage.error(self, MESSAGES.SECURITY.TITLE_ERROR, MESSAGES.SECURITY.TEXT_MISMATCH)
             return
 
-        # [DISABLED] Verificación 2FA desactivada
-        # secret_2fa = self.user_profile.get("totp_secret")
-        # if not secret_2fa:
-        #     secret_2fa = self.user_manager.get_user_totp_secret(self.sm.current_user)
-        # if secret_2fa:
-        #     if not self.user_manager.verify_totp(secret_2fa, token):
-        #         PremiumMessage.error(self, MESSAGES.SECURITY.TITLE_ERROR, MESSAGES.SECURITY.TEXT_2FA_WRONG)
-        #         return
-
         try:
-            # Mostrar UI de progreso
-            self.lbl_process.setText("Iniciando re-encriptación segura...")
+            self.lbl_process.setText("Iniciando motor de re-encriptación...")
             self.process_bar.setVisible(True)
             self.process_bar.setValue(0)
             self.lbl_process.setVisible(True)
             QApplication.processEvents()
 
-            # Callback para actualizar UI desde el loop del backend
             def progress_handler(current, total, success, errors):
                 percent = int((current / total) * 100) if total > 0 else 0
                 self.process_bar.setValue(percent)
                 status_text = f"Procesando: {percent}% ({current}/{total})"
-                if errors > 0:
-                    status_text += f" | ⚠️ {errors} fallos"
+                if errors > 0: status_text += f" | ⚠️ {errors} fallos"
                 self.lbl_process.setText(status_text)
-                
-                # Colorear barra según estado (Usando colores del tema)
-                if errors == 0:
-                    self.process_bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {self.colors['success']}; border-radius: 4px; }}")
-                else:
-                     self.process_bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {self.colors['warning']}; border-radius: 4px; }}")
-                
+                color = self.colors['success'] if errors == 0 else self.colors['warning']
+                self.process_bar.setStyleSheet(f"QProgressBar::chunk {{ background-color: {color}; border-radius: 4px; }}")
                 QApplication.processEvents()
 
-            # 1. Cambiar contraseña local y perfil en Supabase
-            # SENIOR FIX: Pasamos user_manager y capturamos fallos críticos de sincronización
-            # Ahora pasamos el callback de progreso
-            self.sm.change_login_password(cur, new, self.user_manager, progress_callback=progress_handler)
-            
-            # Finalizar UI
-            self.process_bar.setValue(100)
-            self.lbl_process.setText("✅ Re-encriptación y sincronización completada.")
-            self.lbl_process.setStyleSheet(f"color: {self.colors['success']}; font-size: 11px; margin-top: 5px;")
-            
-            # 2. Sincronización Automática de Secretos (NUEVO)
-            if self.sync_manager:
-                try:
-                    self.lbl_sync_status.setText(MESSAGES.SECURITY.TEXT_SYNC_START)
-                    QApplication.processEvents()
-                    
-                    self.sync_manager.backup_to_supabase()
-                    self.lbl_sync_status.setText(MESSAGES.SECURITY.TEXT_SYNC_OK)
-                except Exception as sync_err:
-                    self.logger.warning(f"Auto-backup failed after password change: {sync_err}")
-                    self.lbl_sync_status.setText(MESSAGES.SECURITY.TEXT_SYNC_FAIL)
-                    self.lbl_sync_status.setStyleSheet("color: #fbbf24;")
+            # --- EJECUCIÓN DEL MODO SELECCIONADO ---
+            if self.target_user and self.target_user.upper() != self.user_profile.get("username", "").upper():
+                # MODO ADMIN OVERRIDE (Reset de otro usuario)
+                # Primero validamos la clave del admin
+                admin_name = self.user_profile.get("username", "Global")
+                is_valid = self.user_manager.verify_password(
+                    auth_pwd, 
+                    self.user_manager.sm.get_local_user_profile(admin_name)["salt"],
+                    self.user_manager.sm.get_local_user_profile(admin_name)["password_hash"]
+                )
+                if not is_valid:
+                    PremiumMessage.error(self, MESSAGES.ADMIN.MSG_DENIED, MESSAGES.ADMIN.TEXT_DENIED)
+                    self.process_bar.setVisible(False); self.lbl_process.setVisible(False)
+                    return
 
-            # Verificación extra: ¿El hash local ahora coincide con lo que esperamos?
-            PremiumMessage.success(self, MESSAGES.SECURITY.TITLE_SUCCESS, MESSAGES.SECURITY.TEXT_SUCCESS_DETAIL)
-            self.btn_change.setEnabled(True)
-            self.process_bar.setVisible(False)
+                # Ejecutar Reset de Identidad Administrativo
+                self.sm.admin_reset_user_identity(
+                    self.target_user, 
+                    new_pwd, 
+                    self.user_manager, 
+                    progress_callback=lambda c, t, s, e: progress_handler(c, t, s, e)
+                )
+            else:
+                # MODO AUTO-CAMBIO (El usuario cambia su propia clave)
+                self.sm.change_login_password(auth_pwd, new_pwd, self.user_manager, progress_callback=progress_handler)
+            
+            self.process_bar.setValue(100)
+            self.lbl_process.setText("✅ Operación completada con integridad nuclear.")
+            
+            if self.sync_manager:
+                try: self.sync_manager.backup_to_supabase()
+                except: pass
+
+            PremiumMessage.success(self, MESSAGES.SECURITY.TITLE_SUCCESS, "La Firma Maestra ha sido rotada exitosamente.")
             self.accept()
         except Exception as e:
-            self.logger.error(f"Critical error in password change: {e}")
-            PremiumMessage.error(self, MESSAGES.DASHBOARD.CHANGE_PWD, f"Error: {e}")
+            self.logger.error(f"Error in unified password change: {e}")
+            PremiumMessage.error(self, MESSAGES.DASHBOARD.CHANGE_PWD, f"Fallo Crítico: {e}")
+            self.process_bar.setVisible(False); self.lbl_process.setVisible(False)

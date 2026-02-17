@@ -12,19 +12,30 @@ class DashboardSyncActions:
 
     def _sync_async(self, record_id):
         """Sincronización en segundo plano (Ghost Sync) para evitar lag en la UI."""
+        logger.info(f"[SYNC] _sync_async called for record_id: {record_id}")
+        
         if not getattr(self, 'internet_online', False):
+            logger.warning(f"[SYNC] Skipping sync - internet_online is False")
             return
+        
+        logger.info(f"[SYNC] Internet is online, starting background sync thread")
             
         from threading import Thread
         def run_sync():
             try:
+                logger.info(f"[SYNC] Thread started for record {record_id}")
                 if hasattr(self, 'sync_manager'):
+                    logger.info(f"[SYNC] Calling sync_manager.sync_single_record({record_id})")
                     self.sync_manager.sync_single_record(record_id)
+                    logger.info(f"[SYNC] sync_single_record completed for {record_id}")
+                else:
+                    logger.error(f"[SYNC] No sync_manager attribute found!")
+                    
                 # Refrescar la tabla de forma segura para actualizar el icono de sync
                 if hasattr(self, 'sync_finished'):
                     self.sync_finished.emit()
             except Exception as e:
-                logger.error(f"Ghost Sync Error: {e}")
+                logger.error(f"Ghost Sync Error for record {record_id}: {e}", exc_info=True)
         
         Thread(target=run_sync, daemon=True).start()
 
@@ -34,17 +45,21 @@ class DashboardSyncActions:
             return
 
         from threading import Thread
-        def run_full():
+        def run():
             try:
-                if hasattr(self, 'sync_manager'):
+                if hasattr(self, 'sync_manager') and self.sync_manager:
+                    # Sincronizar usuarios creados offline primero
+                    synced_users = self.sync_manager.sync_pending_users()
+                    if synced_users > 0:
+                        logger.info(f"Synced {synced_users} offline user(s) during startup")
+                    
+                    # Luego sincronizar registros
                     self.sync_manager.sync(cloud_user_id=self.user_profile.get("id"))
-                if hasattr(self, 'sync_finished'):
-                    self.sync_finished.emit()
                 logger.info("Silent Startup Sync Completed.")
             except Exception as e:
                 logger.error(f"Silent Startup Sync Error: {e}")
 
-        Thread(target=run_full, daemon=True).start()
+        Thread(target=run, daemon=True).start()
 
     def _auto_sync_on_login(self):
         """Manejador para el timer de auto-sincronización periódica."""
