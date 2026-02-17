@@ -530,7 +530,17 @@ class SecretsManager:
 
     # --- UTILS & LEGACY ---
     def cleanup_vault_cache(self) -> None:
-        self.session.clear()
+        """
+        Cleanup vault cache and vacuum database.
+        CRITICAL: Does NOT clear session keys if user is logged in.
+        """
+        # Only clear session if NO user is logged in
+        if not self.session.current_user:
+            self.session.clear()
+            logger.info("Session cleared (no active user)")
+        else:
+            logger.debug(f"Skipping session clear - user {self.session.current_user} is logged in")
+        
         self.db.vacuum()
         self._sync_legacy_attributes()
 

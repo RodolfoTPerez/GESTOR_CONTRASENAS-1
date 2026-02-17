@@ -385,8 +385,30 @@ class SyncManager:
                 # New record - INSERT it
                 c_id = self._ensure_cloud_id(rec)
                 payload["id"] = c_id
-                self.client.post_records(self.table, [payload])
-                logger.info(f"Inserted new record {c_id} in Supabase")
+                
+                # Insert and verify it was created
+                response = self.client.post_records(self.table, [payload])
+                
+                # Verify the record was actually inserted
+                if response.status_code in (200, 201):
+                    # Double-check by querying Supabase
+                    try:
+                        verify_url = f"{self.client.supabase_url}/rest/v1/{self.table}?id=eq.{c_id}"
+                        verify_response = self.client.session.get(verify_url, headers=self.client.headers)
+                        if verify_response.status_code == 200:
+                            data = verify_response.json()
+                            if data and len(data) > 0:
+                                logger.info(f"Inserted new record {c_id} in Supabase (verified)")
+                            else:
+                                logger.error(f"Insert reported success but record {c_id} not found in Supabase")
+                                return False
+                        else:
+                            logger.warning(f"Could not verify insert for {c_id}, assuming success")
+                    except Exception as verify_err:
+                        logger.warning(f"Could not verify insert for {c_id}: {verify_err}, assuming success")
+                else:
+                    logger.error(f"Failed to insert record {c_id}: {response.status_code} - {response.text}")
+                    return False
             
             return True
         except Exception as e:

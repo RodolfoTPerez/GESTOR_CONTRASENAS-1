@@ -763,13 +763,14 @@ class UserManager:
             target_key = None
             
             # Prioridad 1: vault_key (la llave activa del vault actual)
-            if self.sm and self.sm.vault_key:
-                target_key = self.sm.vault_key
-                self.logger.info("Using active vault_key for secondary user")
+            # CRITICAL: vault_key está en session.vault_key, NO en sm.vault_key directamente
+            if self.sm and hasattr(self.sm, 'session') and self.sm.session.vault_key:
+                target_key = bytes(self.sm.session.vault_key)  # Convert bytearray to bytes
+                self.logger.info("Using active session.vault_key for secondary user")
             # Prioridad 2: master_key (si está disponible)
-            elif self.sm and self.sm.master_key:
-                target_key = self.sm.master_key
-                self.logger.info("Using master_key for secondary user")
+            elif self.sm and hasattr(self.sm, 'session') and self.sm.session.master_key:
+                target_key = bytes(self.sm.session.master_key)
+                self.logger.info("Using session.master_key for secondary user")
             else:
                 # [CRITICAL] Si no hay llave en memoria, esto es un ERROR GRAVE
                 # No podemos crear un usuario sin compartir la llave del vault
@@ -783,7 +784,8 @@ class UserManager:
             # Envolver la llave con la contraseña del nuevo usuario
             if target_key and password:
                 protected = self.sm.wrap_key(target_key, password, v_salt)
-                self.logger.info(f"Usuario secundario - Llave {'Maestra' if target_key == self.sm.master_key else 'de Bóveda'} enlazada.")
+                is_master = (hasattr(self.sm.session, 'master_key') and target_key == bytes(self.sm.session.master_key))
+                self.logger.info(f"Usuario secundario - Llave {'Maestra' if is_master else 'de Bóveda'} enlazada.")
             else:
                 raise ValueError(f"Cannot wrap vault key for user {username}: missing target_key or password")
             
