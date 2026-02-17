@@ -37,9 +37,13 @@ sequenceDiagram
 - **E2EE Sync**: All records are encrypted locally *before* being transmitted to the cloud.
 
 ### 🚀 Key Features
-- **Duplicate Prevention**: Global enforcement of unique service names across all users and privacy modes.
-- **Enhanced Audit Logs**: Comprehensive activity tracking with real-time cloud synchronization and case-insensitive role management.
-- **Ghost Sync**: Asynchronous synchronization threads that maintain UI fluidness even during high networking loads.
+- **Zero-Knowledge Architecture**: End-to-end encryption with client-side key derivation
+- **Offline User Creation**: Create users without internet connection, auto-sync when online
+- **Duplicate Prevention**: Global enforcement of unique service names across all users and privacy modes
+- **Verified Sync**: All cloud operations are verified to prevent silent failures
+- **Enhanced Audit Logs**: Comprehensive activity tracking with real-time cloud synchronization
+- **Ghost Sync**: Asynchronous synchronization threads that maintain UI fluidness
+- **Session Preservation**: Vault keys remain in memory during active sessions for seamless user management
 
 ---
 
