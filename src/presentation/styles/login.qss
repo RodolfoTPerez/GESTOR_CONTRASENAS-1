@@ -1,24 +1,23 @@
-/* --- LOGIN VIEW STYLES --- */
+/* --- NEW PREMIUM LOGIN VIEW STYLES (Glassmorphism) --- */
 
 #CentralWidget {
     background: transparent;
 }
 
-#MainContainer {
-    background-color: @bg;
-    border-radius: @border-radius-main;
-    border: @border-width-main solid @primary;
+#MainCard {
+    background-color: @ghost_bg;
+    border-radius: 20px;
+    border: 1px solid @ghost_border;
 }
 
-#LeftPanel {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 @bg, stop:1 @bg_sec);
-    border-top-left-radius: @border-radius-main;
-    border-bottom-left-radius: @border-radius-main;
+#HeaderArea {
+    background: transparent;
+    padding-top: 20px;
 }
 
-#RightPanel {
-    background-color: @bg;
-    border-radius: 0px;
+#FormArea {
+    background: transparent;
+    padding: 0 45px 40px 45px;
 }
 
 QLabel {
@@ -26,78 +25,105 @@ QLabel {
 }
 
 QLabel#app_title {
-    font-size: 36px;
+    font-size: 28px;
     font-weight: 900;
     color: white;
     letter-spacing: 2px;
 }
 
 QLabel#tagline {
-    font-size: 14px;
+    font-size: 11px;
     font-weight: 700;
-    color: rgba(255, 255, 255, 0.7);
+    color: @text_dim;
     letter-spacing: 1px;
+    text-transform: uppercase;
 }
 
 QLabel#welcome_label {
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 800;
     color: @text;
 }
 
 QLabel#subtitle_label {
-    font-size: 14px;
+    font-size: 13px;
     color: @text_dim;
 }
 
+/* --- CONNECTIVITY INDICATOR --- */
+#conn_monitor {
+    background: transparent;
+}
+
+#conn_led {
+    border-radius: 5px;
+    background-color: @success; /* Default online */
+}
+
+#conn_led[state="offline"] { background-color: @warning; }
+#conn_led[state="error"] { background-color: @danger; }
+
 /* --- BUTTONS --- */
 QPushButton#login_button {
-    background: @bg; 
-    color: @primary; 
+    background: @primary; 
+    color: white; 
     font-weight: 900; 
-    font-size: 15px; 
-    border-radius: @border-radius-main; 
-    letter-spacing: 3px;
-    border: @border-width-main solid @primary;
+    font-size: 14px; 
+    border-radius: 8px; 
+    letter-spacing: 2px;
+    border: none;
     text-transform: uppercase;
 }
 
 QPushButton#login_button:hover { 
-    background: @primary; 
-    color: @bg;
+    background: @accent; 
 }
 
-QPushButton#btn_reg_toggle {
-    border: none;
-    color: @secondary;
-    font-weight: 700;
-    font-size: 13px;
+QPushButton#login_button:disabled {
+    background: @ghost_primary_20;
+    color: @text_dim;
 }
 
-QPushButton#btn_reg_toggle:hover {
-    color: @accent;
-    text-decoration: underline;
-}
-
-QPushButton#btn_recovery {
+QPushButton#btn_reg_toggle, QPushButton#btn_recovery {
     border: none;
     color: @text_dim;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12px;
+    background: transparent;
 }
 
-QPushButton#btn_recovery:hover {
-    color: @text;
+QPushButton#btn_reg_toggle:hover, QPushButton#btn_recovery:hover {
+    color: @primary;
+}
+
+/* --- PROGRESS BAR (Tactical) --- */
+QProgressBar#login_progress {
+    border: none;
+    background: @ghost_white_10;
+    height: 4px;
+    border-radius: 2px;
+    text-align: center;
+}
+
+QProgressBar#login_progress::chunk {
+    background: @primary;
+    border-radius: 2px;
 }
 
 /* --- WINDOW CONTROLS --- */
 QPushButton#btn_min, QPushButton#btn_close {
     border: none;
     color: @text_dim;
-    font-size: 16px;
-    font-weight: bold;
+    font-size: 14px;
+    background: transparent;
 }
 
-QPushButton#btn_min:hover, QPushButton#btn_close:hover {
-    color: @text;
+QPushButton#btn_min:hover { color: @text; }
+QPushButton#btn_close:hover { color: @danger; }
+
+/* --- INPUTS --- */
+/* PremiumLineEdit uses inline processing via apply_tokens, but let's add some overrides if needed */
+QLineEdit {
+    selection-background-color: @primary;
+    selection-color: white;
 }

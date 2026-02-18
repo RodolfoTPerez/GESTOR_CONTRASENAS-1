@@ -40,23 +40,91 @@ class SecretsManager:
         self.session = SessionService()
         self.security = SecurityService()
         
-        # Legacy attribute access for compatibility
-        self._sync_legacy_attributes()
-
-    def _sync_legacy_attributes(self) -> None:
-        """Maintains attributes that UI classes might access directly."""
-        self.conn = self.db.conn
-        self.db_path = self.db.db_path
-        # Map properties for direct access
-        self.current_user = self.session.current_user
-        self.current_user_id = self.session.current_user_id
-        self.user_role = self.session.user_role
-        self.master_key = self.session.master_key
-        self.personal_key = self.session.personal_key
-        self.vault_key = self.session.vault_key
-        self.current_vault_id = self.session.current_vault_id
-        self.session_id = self.session.session_id
-        self.kek_candidates = self.session.kek_candidates
+        # Dynamic properties for legacy compatibility (no more copying values)
+        # These properties always reflect current session state
+    
+    # --- DYNAMIC PROPERTIES FOR LEGACY ACCESS ---
+    @property
+    def current_user(self) -> Optional[str]:
+        return self.session.current_user
+    
+    @current_user.setter
+    def current_user(self, value: Optional[str]) -> None:
+        self.session.current_user = value
+    
+    @property
+    def current_user_id(self) -> Optional[str]:
+        return self.session.current_user_id
+    
+    @current_user_id.setter
+    def current_user_id(self, value: Optional[str]) -> None:
+        self.session.current_user_id = value
+    
+    @property
+    def user_role(self) -> str:
+        return self.session.user_role
+    
+    @user_role.setter
+    def user_role(self, value: str) -> None:
+        self.session.user_role = value
+    
+    @property
+    def master_key(self) -> Optional[bytearray]:
+        return self.session.master_key
+    
+    @master_key.setter
+    def master_key(self, value: Optional[bytearray]) -> None:
+        self.session.master_key = value
+    
+    @property
+    def personal_key(self) -> Optional[bytearray]:
+        return self.session.personal_key
+    
+    @personal_key.setter
+    def personal_key(self, value: Optional[bytearray]) -> None:
+        self.session.personal_key = value
+    
+    @property
+    def vault_key(self) -> Optional[bytearray]:
+        return self.session.vault_key
+    
+    @vault_key.setter
+    def vault_key(self, value: Optional[bytearray]) -> None:
+        self.session.vault_key = value
+    
+    @property
+    def current_vault_id(self) -> Optional[str]:
+        """Vault ID activo (delegado a session)."""
+        return self.session.current_vault_id
+    
+    @current_vault_id.setter
+    def current_vault_id(self, value: Optional[str]) -> None:
+        """Establece el vault ID activo."""
+        self.session.current_vault_id = value
+    
+    @property
+    def session_id(self) -> str:
+        return self.session.session_id
+    
+    @session_id.setter
+    def session_id(self, value: str) -> None:
+        self.session.session_id = value
+    
+    @property
+    def kek_candidates(self) -> dict:
+        return self.session.kek_candidates
+    
+    @kek_candidates.setter
+    def kek_candidates(self, value: dict) -> None:
+        self.session.kek_candidates = value
+    
+    @property
+    def conn(self):
+        return self.db.conn
+    
+    @property
+    def db_path(self):
+        return self.db.db_path
 
     # --- DATABASEDO & META ---
     def get_meta(self, key: str) -> Optional[str]: return self.users.get_meta(key)
@@ -64,7 +132,6 @@ class SecretsManager:
     
     def _initialize_db(self, name: str) -> None:
         self.db._initialize_db(name)
-        self._sync_legacy_attributes()
 
     def reconnect(self, username: str) -> None:
         logger.info(f"[DEBUG] Attempting to reconnect for {username}...")
@@ -179,7 +246,6 @@ class SecretsManager:
                         logger.warning(f"[Security] All recovery paths failed for {new_user}. Shared records will be locked.")
 
         self.session.master_key = self.session.personal_key or self.session.vault_key or kek
-        self._sync_legacy_attributes()
         logger.info(f"Session Started: {self.session.current_user} | ID: {self.session.session_id}")
 
 
@@ -532,17 +598,21 @@ class SecretsManager:
     def cleanup_vault_cache(self) -> None:
         """
         Cleanup vault cache and vacuum database.
-        CRITICAL: Does NOT clear session keys if user is logged in.
+        CRITICAL: Does NOT clear session keys if user is logged in OR if vault_key exists.
         """
-        # Only clear session if NO user is logged in
-        if not self.session.current_user:
+        # SECURITY FIX: Only clear session if BOTH conditions are met:
+        # 1. No active user logged in
+        # 2. No vault_key in memory (prevents loss during secondary user creation)
+        if not self.session.current_user and not self.session.vault_key:
             self.session.clear()
-            logger.info("Session cleared (no active user)")
+            logger.info("Session cleared (no active user and no vault key)")
         else:
-            logger.debug(f"Skipping session clear - user {self.session.current_user} is logged in")
+            if self.session.current_user:
+                logger.debug(f"Skipping session clear - user {self.session.current_user} is logged in")
+            if self.session.vault_key:
+                logger.debug("Skipping session clear - vault_key exists in memory")
         
         self.db.vacuum()
-        self._sync_legacy_attributes()
 
     def _ensure_bytes(self, data: Any) -> Optional[bytes]:
         """Legacy internal helper for byte conversion, delegated to SecurityService."""
@@ -608,7 +678,7 @@ class SecretsManager:
     def unwrap_key(self, wrapped_data: Any, password: str, salt: Any) -> bytes: return self.security.unwrap_key(wrapped_data, password, salt)
     def save_vault_access_local(self, vault_id: str, wrapped_key: bytes, synced: int = 0, force: bool = False, vault_salt: Optional[bytes] = None) -> bool: 
         if not self.session.current_user:
-            logger.warning("Intentando guardar acceso a bóveda sin usuario activo.")
+            logger.debug("Vault access save attempted before user activation (normal during initialization)")
             return False
         return self.users.update_vault_access(self.session.current_user, vault_id, wrapped_key, synced=synced, force=force, vault_salt=vault_salt)
 

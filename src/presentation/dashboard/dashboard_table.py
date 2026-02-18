@@ -615,29 +615,41 @@ class DashboardTableManager:
         for t in targets:
             visible_count = 0
             for row in range(t.rowCount()):
-                # Búsqueda en Estado/LVL (Col 1)
+                # CONSTRUCCIÓN DE BUFFER DE BÚSQUEDA (Deep Search Protocol)
+                search_buffer = []
+                
+                # 1. LVL / Estado (Col 1)
                 lvl_item = t.item(row, 1)
-                lvl_text = lvl_item.text() if lvl_item else ""
+                if lvl_item: search_buffer.append(lvl_item.text())
                 
+                # 2. SERVICIO (Col 3 - Widget)
                 service_widget = t.cellWidget(row, 3) 
-                owner_item = t.item(row, 4)
-                svc_text = ""
                 if service_widget:
-                    lbls = service_widget.findChildren(QLabel)
-                    for l in lbls: svc_text += l.text().lower() + " "
+                    for lbl in service_widget.findChildren(QLabel):
+                        search_buffer.append(lbl.text())
                 
-                owner_text = owner_item.text().lower() if owner_item else ""
+                # 3. PROPIETARIO (Col 4)
+                owner_item = t.item(row, 4)
+                if owner_item: search_buffer.append(owner_item.text())
                 
-                # Búsqueda en Antigüedad (Col 5)
+                # 4. ANTIGÜEDAD (Col 5)
                 age_item = t.item(row, 5)
-                age_text = age_item.text().lower() if age_item else ""
+                if age_item: search_buffer.append(age_item.text())
                 
-                # Búsqueda en Notas (Col 6)
+                # 5. NOTAS (Col 6)
                 notes_item = t.item(row, 6)
-                notes_text = notes_item.text().lower() if notes_item else ""
+                if notes_item: search_buffer.append(notes_item.text())
                 
-                # Match restringido: Solo busca en la columna SERVICE (Col 3)
-                match = (text in svc_text)
+                # 6. METADATA OCULTA (Username de la credencial en Col 7)
+                pwd_item = t.item(row, 7)
+                if pwd_item:
+                    r = pwd_item.data(Qt.UserRole + 1) or {}
+                    if r.get("username"): search_buffer.append(str(r["username"]))
+
+                # Match Final: Case-insensitive y robusto
+                row_content = " ".join(search_buffer).lower()
+                match = (not text) or (text in row_content)
+                
                 t.setRowHidden(row, not match)
                 if match:
                     visible_count += 1

@@ -63,14 +63,14 @@ class SyncManager:
                         protected_bytes = self.sm._ensure_bytes(row[5])
                         payload["protected_key"] = base64.b64encode(protected_bytes).decode('ascii')
                     
-                    # Insertar en Supabase
-                    res = self.client.supabase.table("users").insert(payload).execute()
-                    if not res.data:
+                    # Insertar en Supabase usando HTTP directo
+                    res = self.client.post_records("users", [payload], merge_duplicates=False)
+                    if not res or not res.get("data"):
                         logger.error(f"[User Sync] Failed to sync user {username}: No data returned")
                         continue
                     
                     # Obtener el ID real de Supabase
-                    real_user_id = res.data[0]["id"]
+                    real_user_id = res["data"][0]["id"]
                     logger.info(f"[User Sync] User {username} synced to Supabase with ID {real_user_id}")
                     
                     # Sincronizar vault_access si existe protected_key
@@ -82,7 +82,7 @@ class SyncManager:
                                 "vault_id": row[6],
                                 "wrapped_master_key": protected_bytes.hex()
                             }
-                            self.client.supabase.table("vault_access").upsert(vault_payload).execute()
+                            self.client.post_records("vault_access", [vault_payload], merge_duplicates=True)
                             logger.info(f"[User Sync] Vault access synced for {username}")
                         except Exception as va_err:
                             logger.error(f"[User Sync] Failed to sync vault_access for {username}: {va_err}")
@@ -104,9 +104,9 @@ class SyncManager:
                         logger.warning(f"[User Sync] User {username} already exists in Supabase, marking as synced")
                         # Intentar obtener el ID del usuario existente
                         try:
-                            existing = self.client.supabase.table("users").select("id").eq("username", username).execute()
-                            if existing.data:
-                                real_id = existing.data[0]["id"]
+                            existing = self.client.get_records("users", params=f"select=id&username=eq.{username}")
+                            if existing and len(existing) > 0:
+                                real_id = existing[0]["id"]
                                 self.sm.conn.execute("UPDATE users SET user_id = ?, synced = 1 WHERE username = ?", (real_id, username))
                                 self.sm.conn.commit()
                                 synced_count += 1
@@ -122,6 +122,45 @@ class SyncManager:
             
         except Exception as e:
             logger.error(f"[User Sync] Error in sync_pending_users: {e}")
+            return 0
+    
+    def sync_pending_deletes(self):
+        """Sync deletions that were made offline to Supabase."""
+        if not self.check_internet():
+            logger.debug("[Delete Sync] No internet, skipping pending delete sync")
+            return 0
+        
+        try:
+            # Get pending deletes
+            cursor = self.sm.conn.execute("SELECT id, cloud_id FROM pending_deletes")
+            pending = cursor.fetchall()
+            
+            if not pending:
+                return 0
+            
+            synced_count = 0
+            for row in pending:
+                delete_id, cloud_id = row
+                try:
+                    # Delete from Supabase
+                    self.client.delete_record(self.table, cloud_id)
+                    logger.info(f"[Delete Sync] Deleted cloud record {cloud_id}")
+                    
+                    # Remove from pending_deletes
+                    self.sm.conn.execute("DELETE FROM pending_deletes WHERE id=?", (delete_id,))
+                    self.sm.conn.commit()
+                    synced_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"[Delete Sync] Failed to delete {cloud_id}: {e}")
+            
+            if synced_count > 0:
+                logger.info(f"[Delete Sync] Synced {synced_count} offline deletions to cloud")
+            
+            return synced_count
+            
+        except Exception as e:
+            logger.error(f"[Delete Sync] Error in sync_pending_deletes: {e}")
             return 0
 
     def check_supabase(self):
@@ -247,9 +286,14 @@ class SyncManager:
             self._sync_shared_keys(cloud_user_id=cloud_user_id)
         
         self.sm.refresh_vault_context()
+        
+        # CRITICAL: Sync pending deletes FIRST (from offline deletions)
+        self.sync_pending_deletes()
 
         if progress_callback: progress_callback(5, "Checking for changes...")
-        downloaded = self._pull_cloud_to_local()
+        
+        # CRITICAL: Push local changes FIRST (including deletes) before pulling from cloud
+        # This prevents deleted records from being re-downloaded
         local_mine = self.sm.get_all_encrypted(only_mine=True)
         has_local_changes = any(not r.get("synced") or r.get("deleted") for r in local_mine)
 
@@ -257,6 +301,10 @@ class SyncManager:
         if has_local_changes:
             if progress_callback: progress_callback(30, "Uploading local changes...")
             uploaded = self._push_local_to_cloud()
+        
+        # THEN pull from cloud (after local deletes are synced)
+        if progress_callback: progress_callback(60, "Downloading cloud changes...")
+        downloaded = self._pull_cloud_to_local()
         
         self.sync_audit_logs()
         if progress_callback: progress_callback(100, f"Sync finished. ↑{uploaded['success']} ↓{downloaded}")
@@ -308,11 +356,27 @@ class SyncManager:
         stats = {"success": 0, "failed": 0}
         for rec in self.sm.get_all_encrypted(only_mine=True):
             if rec.get("synced"): continue
+            
             try:
-                if self._upload_record(rec):
-                    self.sm.mark_as_synced(rec["id"], 1)
+                # Handle deleted records separately
+                if rec.get("deleted"):
+                    # Delete from Supabase if it has a cloud_id
+                    if rec.get("cloud_id"):
+                        self.delete_from_supabase(rec["id"])
+                        logger.info(f"Deleted record {rec['id']} from Supabase (offline delete sync)")
+                    
+                    # Mark as synced and remove from local DB
+                    self.sm.conn.execute("DELETE FROM secrets WHERE id=?", (rec["id"],))
+                    self.sm.conn.commit()
                     stats["success"] += 1
-            except: stats["failed"] += 1
+                else:
+                    # Upload normal record
+                    if self._upload_record(rec):
+                        self.sm.mark_as_synced(rec["id"], 1)
+                        stats["success"] += 1
+            except Exception as e:
+                logger.error(f"Error syncing record {rec.get('id')}: {e}")
+                stats["failed"] += 1
         return stats
 
     def _pull_cloud_to_local(self):
@@ -471,9 +535,9 @@ class SyncManager:
         # Get valid user_ids from Supabase to avoid foreign key violations
         valid_user_ids = set()
         try:
-            users_response = self.client.supabase.table("users").select("id").execute()
-            if users_response.data:
-                valid_user_ids = {u["id"] for u in users_response.data}
+            users_response = self.client.get_records("users", params="select=id")
+            if users_response and len(users_response) > 0:
+                valid_user_ids = {u["id"] for u in users_response}
         except Exception as e:
             logger.warning(f"Could not fetch valid user_ids, syncing without validation: {e}")
         
@@ -530,6 +594,11 @@ class SyncManager:
 
     def get_active_sessions(self):
         """Obtiene y agrupa los latidos recientes por dispositivo para mostrar sesiones únicas."""
+        # Fast-fail if offline
+        if not self.check_internet():
+            logger.debug("Skipping active sessions check - offline mode")
+            return []
+        
         try:
             # 1. Filtro Agresivo: Solo eventos de los últimos 5 minutos (300s)
             now = int(time.time())
@@ -549,9 +618,11 @@ class SyncManager:
                     continue
                 session_key = f"{user}@{device}"
                 
-                if session_key not in sessions:
-                    is_revoked = log.get("action") in ["KICK", "REVOKE", "EMERGENCY_LOCK"]
-                    
+                # Verificar si la sesión está revocada
+                is_revoked = log.get("status") == "REVOKED"
+                
+                # Solo actualizar si no existe o si es más reciente
+                if session_key not in sessions or log.get("timestamp", 0) > sessions[session_key]["last_seen"]:
                     sessions[session_key] = {
                         "username": user,
                         "device_name": device,
@@ -563,7 +634,7 @@ class SyncManager:
             
             return list(sessions.values())
         except Exception as e:
-            logger.error(f"Error aggregating active sessions: {e}")
+            logger.debug(f"Error aggregating active sessions (offline): {e}")
             return []
 
     def revoke_session(self, target_user, target_device):

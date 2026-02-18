@@ -75,6 +75,8 @@ class MESSAGES:
     CARDS = CompatibilityLayer("CARDS")
     LISTS = CompatibilityLayer("LISTS")
     EXPLANATIONS = CompatibilityLayer("EXPLANATIONS")
+    QUICK_ACTIONS = CompatibilityLayer("QUICK_ACTIONS")
+    INFO_TILES = CompatibilityLayer("INFO_TILES")
 
 # Inicializar carga al importar si es necesario, 
 # o dejar que se cargue perezosamente en el primer get()

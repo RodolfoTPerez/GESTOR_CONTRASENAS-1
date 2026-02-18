@@ -145,10 +145,23 @@ class DashboardVaultActions:
             if is_admin:
                 # El ADMIN elimina de verdad (Hard Delete de todo)
                 if PremiumMessage.question(self, MESSAGES.DASHBOARD.TITLE_DELETE_CONFIRM, MESSAGES.DASHBOARD.TEXT_DELETE_CONFIRM_ADMIN.format(service=service)):
+                    # Get cloud_id before deleting
+                    cloud_id = record.get("cloud_id")
+                    
                     # [CORE FIX] ELIMINAR DE NUBE PRIMERO (Necesita el registro local para saber el ID cloud)
                     if getattr(self, 'internet_online', False):
-                        if hasattr(self, 'sync_manager'):
+                        if hasattr(self, 'sync_manager') and cloud_id:
                             self.sync_manager.delete_from_supabase(record["id"])
+                    else:
+                        # OFFLINE: Queue deletion for later sync
+                        if cloud_id:
+                            import time
+                            self.sm.conn.execute(
+                                "INSERT INTO pending_deletes (cloud_id, deleted_at) VALUES (?, ?)",
+                                (cloud_id, int(time.time()))
+                            )
+                            self.sm.conn.commit()
+                            logger.info(f"Queued offline delete for cloud_id: {cloud_id}")
                     
                     self.sm.hard_delete_secret(record["id"])
                     self.sm.log_event("ELIMINACION FISICA", service, target_user=username)
@@ -159,10 +172,23 @@ class DashboardVaultActions:
                 if record.get("is_private") == 1:
                     # Si el registro es PRIVADO: Eliminación PERMANENTE permitida al dueño
                     if PremiumMessage.question(self, "Eliminar Registro Privado", f"¿Estás seguro de eliminar PERMANENTEMENTE '{service}'?\nSe borrará de tu equipo y de la nube."):
+                        # Get cloud_id before deleting
+                        cloud_id = record.get("cloud_id")
+                        
                         # [CORE FIX] ELIMINAR DE NUBE PRIMERO
                         if getattr(self, 'internet_online', False):
-                            if hasattr(self, 'sync_manager'):
+                            if hasattr(self, 'sync_manager') and cloud_id:
                                 self.sync_manager.delete_from_supabase(record["id"])
+                        else:
+                            # OFFLINE: Queue deletion for later sync
+                            if cloud_id:
+                                import time
+                                self.sm.conn.execute(
+                                    "INSERT INTO pending_deletes (cloud_id, deleted_at) VALUES (?, ?)",
+                                    (cloud_id, int(time.time()))
+                                )
+                                self.sm.conn.commit()
+                                logger.info(f"Queued offline delete for cloud_id: {cloud_id}")
                             
                         self.sm.hard_delete_secret(record["id"])
                         self.sm.log_event("ELIMINACION PRIVADA FISICA", service)

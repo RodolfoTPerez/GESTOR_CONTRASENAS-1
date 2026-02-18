@@ -282,22 +282,21 @@ class GhostExplanationDialog(QDialog):
         # DEEP DIVE: SONAR SECTORS
         elif MESSAGES.EXPLANATIONS.AI_SECTOR in key:
             k_low = key.lower()
-            # Support for both English and Spanish keywords
-            if any(x in k_low for x in ["strength", "fortaleza", "maestra"]):
+            if "strength" in k_low or "maestra" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_STRENGTH
-            elif any(x in k_low for x in ["auth", "identidad"]):
+            elif "auth" in k_low or "identidad" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_AUTH
-            elif any(x in k_low for x in ["health", "salud"]):
+            elif "health" in k_low or "salud" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_HEALTH
-            elif any(x in k_low for x in ["rotation", "rotación"]):
+            elif "rotation" in k_low or "rotación" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_ROTATION
-            elif any(x in k_low for x in ["intel", "inteligencia"]):
+            elif "intel" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_INTEL
-            elif any(x in k_low for x in ["sync", "nube"]):
+            elif "sync" in k_low or "nube" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_SYNC
-            elif any(x in k_low for x in ["records", "registros", "digital"]):
+            elif "records" in k_low or "digital" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_RECORDS
-            elif any(x in k_low for x in ["risk", "riesgo"]):
+            elif "risk" in k_low or "riesgo" in k_low:
                 interp = MESSAGES.EXPLANATIONS.SECTOR_RISK
             color_token = "@warning"
  

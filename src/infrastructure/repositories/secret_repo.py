@@ -49,7 +49,8 @@ class SecretRepository:
         except Exception as e:
             logger.error(f"Error in batch_add_secrets: {e}")
             try: self.db.execute("ROLLBACK")
-            except: pass
+            except Exception as e:
+                logger.debug(f"Vacuum operation failed: {e}")
             return False
 
     def update_secret(self, sid: int, service: str, username: str, 

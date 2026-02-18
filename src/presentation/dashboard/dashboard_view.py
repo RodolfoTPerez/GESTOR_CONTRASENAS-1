@@ -812,7 +812,7 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         # Auto-sync periódico cada 2 minutos
         self.auto_sync_timer = QTimer(self)
         self.auto_sync_timer.timeout.connect(self._auto_sync_on_login)
-        self.auto_sync_timer.start(120000) 
+        self.auto_sync_timer.start(300000)  # 5 minutes (reduced from 2 min to minimize offline connection attempts) 
 
     def logout(self):
         self.sm.log_event("LOGOUT", details="Sesión cerrada manualmente")

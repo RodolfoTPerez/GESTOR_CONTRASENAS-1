@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QLabel, QLineEdit, QPushButton,
     QVBoxLayout, QHBoxLayout, QWidget, QFrame,
-    QGraphicsDropShadowEffect, QApplication, QSpacerItem, QSizePolicy
+    QGraphicsDropShadowEffect, QApplication, QSpacerItem, QSizePolicy,
+    QProgressBar
 )
-from PyQt5.QtGui import QPixmap, QColor, QFont, QIcon, QPainter, QLinearGradient
+from PyQt5.QtGui import QPixmap, QColor, QFont, QIcon, QPainter, QLinearGradient, QRadialGradient, QConicalGradient
 from PyQt5.QtCore import Qt, QPropertyAnimation, QPoint, QSettings, QTimer, QRect
 import pyotp
 import time
@@ -56,6 +57,63 @@ class PremiumLineEdit(QLineEdit):
     def focusOutEvent(self, e):
         self.setStyleSheet(self._style(False))
         super().focusOutEvent(e)
+
+class ConnectivityLED(QWidget):
+    """Widget que simula un LED fluorescente giratorio para el estado de red."""
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(24, 24)
+        self._online = True
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._rotate)
+        self._timer.start(30) # 33 FPS aprox
+
+    def set_state(self, is_online):
+        self._online = is_online
+        self.update()
+
+    def _rotate(self):
+        self._angle = (self._angle + 10) % 360
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        rect = self.rect().adjusted(2, 2, -2, -2)
+        center = rect.center()
+        radius = rect.width() / 2
+        
+        # Glow Fluorescente
+        glow = QRadialGradient(center, radius + 4)
+        if self._online:
+            base_col = QColor(0, 255, 255) # Cian Neón
+            glow.setColorAt(0, QColor(0, 255, 255, 200))
+            glow.setColorAt(0.5, QColor(0, 150, 255, 100))
+            glow.setColorAt(1, Qt.transparent)
+        else:
+            base_col = QColor(255, 50, 0) # Naranja/Rojo Neón
+            glow.setColorAt(0, QColor(255, 80, 0, 200))
+            glow.setColorAt(0.5, QColor(200, 0, 0, 100))
+            glow.setColorAt(1, Qt.transparent)
+            
+        painter.setBrush(glow)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(self.rect())
+        
+        # Efecto Giratorio (Cónico)
+        rot_grad = QConicalGradient(center, self._angle)
+        rot_grad.setColorAt(0, base_col)
+        rot_grad.setColorAt(0.2, Qt.transparent)
+        rot_grad.setColorAt(1, Qt.transparent)
+        
+        painter.setBrush(rot_grad)
+        painter.drawEllipse(rect)
+        
+        # Punto Central Intenso
+        painter.setBrush(QColor(255, 255, 255, 200))
+        painter.drawEllipse(center, 2, 2)
 
 class LoginView(QMainWindow):
     def __init__(self, user_manager=None, prefill_user=None, on_success=None):
@@ -143,42 +201,83 @@ class LoginView(QMainWindow):
         self.central_widget.setObjectName("CentralWidget")
         self.setCentralWidget(self.central_widget)
         
-        # Sombra exterior para el contenedor principal
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(30)
-        shadow.setXOffset(0)
-        shadow.setYOffset(0)
-        shadow.setColor(QColor(0, 0, 0, 180))
-        self.central_widget.setGraphicsEffect(shadow)
+        # Main Layout (Centered)
+        main_layout = QVBoxLayout(self.central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setAlignment(Qt.AlignCenter)
 
-        layout = QHBoxLayout(self.central_widget)
-        layout.setContentsMargins(10, 10, 10, 10) # Espacio para la sombra
-
-        # Frame Principal Redondeado
-        self.container = QFrame()
-        self.container.setObjectName("MainContainer")
-        container_layout = QHBoxLayout(self.container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(0)
-        layout.addWidget(self.container)
-
-        # 1. LEFT PANEL (Visual Hero)
-        self.left_panel = QFrame()
-        self.left_panel.setObjectName("LeftPanel")
-        self.left_panel.setFixedWidth(420)
-        left_vbox = QVBoxLayout(self.left_panel)
-        left_vbox.setContentsMargins(40, 60, 40, 60)
+        # 1. EL CONTENEDOR TIPO TARJETA (Glass Card)
+        self.card = QFrame()
+        self.card.setObjectName("MainCard")
+        self.card.setFixedSize(460, 620)
         
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(40)
+        shadow.setXOffset(0)
+        shadow.setYOffset(10)
+        shadow.setColor(QColor(0, 0, 0, 180))
+        self.card.setGraphicsEffect(shadow)
+        
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
+        main_layout.addWidget(self.card)
+
+        # --- HEADER AREA (Logo + Controls) ---
+        header_area = QFrame()
+        header_area.setObjectName("HeaderArea")
+        header_area.setFixedHeight(220)
+        header_vbox = QVBoxLayout(header_area)
+        header_vbox.setContentsMargins(20, 15, 20, 0)
+        
+        # Windows Controls & Connectivity Row
+        top_row = QHBoxLayout()
+        
+        # Connectivity Monitor (LED)
+        self.conn_widget = QWidget()
+        self.conn_widget.setFixedSize(120, 40)
+        self.conn_widget.setObjectName("ConnMonitor")
+        conn_layout = QHBoxLayout(self.conn_widget)
+        conn_layout.setContentsMargins(10, 0, 10, 0)
+        
+        self.conn_led = ConnectivityLED()
+        
+        self.conn_label = QLabel("SYSTEM ONLINE")
+        self.conn_label.setObjectName("ConnLabel")
+        self.conn_label.setStyleSheet("color: #00ffff; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
+        
+        conn_layout.addWidget(self.conn_led)
+        conn_layout.addWidget(self.conn_label)
+        
+        # Posicionamiento absoluto en la tarjeta (Superior Derecha)
+        self.conn_widget.setParent(self.card)
+        self.conn_widget.move(self.card.width() - 130, 15)
+        
+        top_row.addStretch()
+        
+        self.btn_min = QPushButton("－")
+        self.btn_min.setObjectName("btn_min")
+        self.btn_close = QPushButton("✕")
+        self.btn_close.setObjectName("btn_close")
+        for b in [self.btn_min, self.btn_close]:
+            b.setFixedSize(28, 28)
+            b.setCursor(Qt.PointingHandCursor)
+        self.btn_min.clicked.connect(self.showMinimized)
+        self.btn_close.clicked.connect(self.close)
+        top_row.addWidget(self.btn_min)
+        top_row.addWidget(self.btn_close)
+        header_vbox.addLayout(top_row)
+
         # Logo dinámico
         self.logo_label = QLabel()
         self.logo_label.setAlignment(Qt.AlignCenter)
         logo_path = str(Path(__file__).parent.parent.parent / "logo_v2.png")
         if Path(logo_path).exists():
-            pix = QPixmap(logo_path).scaled(160, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(logo_path).scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.logo_label.setPixmap(pix)
         else:
             self.logo_label.setText("🛡️")
-            self.logo_label.setStyleSheet("font-size: 100px; color: white;")
+            self.logo_label.setStyleSheet("font-size: 60px; color: white;")
         
         self.app_title = QLabel("VAULT CORE")
         self.app_title.setObjectName("app_title")
@@ -188,81 +287,62 @@ class LoginView(QMainWindow):
         self.tagline.setObjectName("tagline")
         self.tagline.setAlignment(Qt.AlignCenter)
 
-        left_vbox.addStretch()
-        left_vbox.addWidget(self.logo_label)
-        left_vbox.addSpacing(20)
-        left_vbox.addWidget(self.app_title)
-        left_vbox.addWidget(self.tagline)
-        left_vbox.addStretch()
-        
-        self.lbl_version = QLabel("PRO VERSION v2.1") # Keep English as it's a version string
-        self.lbl_version.setStyleSheet("color: rgba(255,255,255,0.3); font-size: 10px; font-weight: bold;")
-        self.lbl_version.setAlignment(Qt.AlignCenter)
-        left_vbox.addWidget(self.lbl_version)
+        header_vbox.addWidget(self.logo_label)
+        header_vbox.addSpacing(10)
+        header_vbox.addWidget(self.app_title)
+        header_vbox.addWidget(self.tagline)
+        card_layout.addWidget(header_area)
 
-        # 2. RIGHT PANEL (Login Form)
-        self.right_panel = QFrame()
-        self.right_panel.setObjectName("RightPanel")
-        
-        right_vbox = QVBoxLayout(self.right_panel)
-        right_vbox.setContentsMargins(60, 40, 60, 50)
-        
-        # Close/Min buttons
-        btns_layout = QHBoxLayout()
-        btns_layout.addStretch()
-        self.btn_min = QPushButton("－")
-        self.btn_min.setObjectName("btn_min")
-        self.btn_close = QPushButton("✕")
-        self.btn_close.setObjectName("btn_close")
-        for b in [self.btn_min, self.btn_close]:
-            b.setFixedSize(32, 32)
-            b.setCursor(Qt.PointingHandCursor)
-        self.btn_min.clicked.connect(self.showMinimized)
-        self.btn_close.clicked.connect(self.close)
-        btns_layout.addWidget(self.btn_min)
-        btns_layout.addWidget(self.btn_close)
-        right_vbox.addLayout(btns_layout)
-
-        right_vbox.addSpacing(20)
+        # --- FORM AREA ---
+        form_area = QFrame()
+        form_area.setObjectName("FormArea")
+        form_vbox = QVBoxLayout(form_area)
+        form_vbox.setContentsMargins(45, 20, 45, 30)
+        form_vbox.setSpacing(15)
         
         self.welcome_label = QLabel(MESSAGES.LOGIN.WELCOME)
         self.welcome_label.setObjectName("welcome_label")
+        self.welcome_label.setAlignment(Qt.AlignCenter)
         
         self.subtitle_label = QLabel(MESSAGES.LOGIN.SUBTITLE)
         self.subtitle_label.setObjectName("subtitle_label")
+        self.subtitle_label.setAlignment(Qt.AlignCenter)
         
-        right_vbox.addWidget(self.welcome_label)
-        right_vbox.addWidget(self.subtitle_label)
-        right_vbox.addSpacing(40)
+        form_vbox.addWidget(self.welcome_label)
+        form_vbox.addWidget(self.subtitle_label)
+        form_vbox.addSpacing(15)
 
         # Inputs
         self.username_input = PremiumLineEdit(MESSAGES.LOGIN.PLACEHOLDER_USER)
         self.password_input = PremiumLineEdit(MESSAGES.LOGIN.PLACEHOLDER_PWD, password=True)
-        self.totp_input = PremiumLineEdit(MESSAGES.LOGIN.PLACEHOLDER_TOTP)
         self.invitation_input = PremiumLineEdit(MESSAGES.LOGIN.PLACEHOLDER_INVITE)
         self.invitation_input.setVisible(False)
 
-        right_vbox.addWidget(self.username_input)
-        right_vbox.addSpacing(10)
-        right_vbox.addWidget(self.invitation_input)
-        right_vbox.addSpacing(10)
-        right_vbox.addWidget(self.password_input)
-        right_vbox.addSpacing(10)
+        form_vbox.addWidget(self.username_input)
+        form_vbox.addWidget(self.invitation_input)
+        form_vbox.addWidget(self.password_input)
         
-        right_vbox.addSpacing(30)
+        # Loading Progress Bar (Hidden by default)
+        self.login_progress = QProgressBar()
+        self.login_progress.setObjectName("login_progress")
+        self.login_progress.setRange(0, 0) # Indeterminate initially
+        self.login_progress.setTextVisible(False)
+        self.login_progress.setFixedHeight(4)
+        self.login_progress.hide()
+        form_vbox.addWidget(self.login_progress)
+
+        form_vbox.addSpacing(10)
 
         # Login Button
         self.login_button = QPushButton(MESSAGES.LOGIN.BTN_LOGIN)
         self.login_button.setObjectName("login_button")
         self.login_button.setCursor(Qt.PointingHandCursor)
-        self.login_button.setFixedHeight(55)
+        self.login_button.setFixedHeight(50)
         self.login_button.clicked.connect(self.try_login)
-        right_vbox.addWidget(self.login_button)
+        form_vbox.addWidget(self.login_button)
 
-        # Toggle Register & Recovery
+        # Links Area
         links_layout = QHBoxLayout()
-        links_layout.setSpacing(20)
-        
         self.btn_reg_toggle = QPushButton(MESSAGES.LOGIN.REG_LINK)
         self.btn_reg_toggle.setObjectName("btn_reg_toggle")
         self.btn_reg_toggle.setCursor(Qt.PointingHandCursor)
@@ -273,29 +353,56 @@ class LoginView(QMainWindow):
         self.btn_recovery.setCursor(Qt.PointingHandCursor)
         self.btn_recovery.clicked.connect(self._show_recovery_info)
         
-        links_layout.addStretch()
         links_layout.addWidget(self.btn_reg_toggle)
-        links_layout.addWidget(self.btn_recovery)
         links_layout.addStretch()
+        links_layout.addWidget(self.btn_recovery)
+        form_vbox.addLayout(links_layout)
+
+        card_layout.addWidget(form_area)
         
-        right_vbox.addLayout(links_layout)
+        # Status Footer
+        self.lbl_version = QLabel("PRO VERSION v2.2")
+        self.lbl_version.setStyleSheet("color: rgba(255,255,255,0.2); font-size: 9px; font-weight: bold;")
+        self.lbl_version.setAlignment(Qt.AlignCenter)
+        card_layout.addStretch()
+        card_layout.addWidget(self.lbl_version)
+        card_layout.addSpacing(15)
+        
+        # Timer para el LED de conectividad
+        self.conn_timer = QTimer(self)
+        self.conn_timer.timeout.connect(self._check_connectivity)
+        self.conn_timer.start(5000) # Cada 5 seg
+        self._check_connectivity() # Primera ejecución
 
-        right_vbox.addStretch()
-
-        container_layout.addWidget(self.left_panel)
-        container_layout.addWidget(self.right_panel)
+    def _check_connectivity(self):
+        """Verifica si hay acceso a la red de forma no bloqueante."""
+        try:
+            import socket
+            # Simple check to a reliable DNS or Supabase host
+            socket.create_connection(("8.8.8.8", 53), timeout=2)
+            self.conn_led.set_state(True)
+            self.conn_label.setText("SYSTEM ONLINE")
+            self.conn_label.setStyleSheet("color: #00ffff; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
+        except:
+            self.conn_led.set_state(False)
+            self.conn_label.setText("LOCAL MODE")
+            self.conn_label.setStyleSheet("color: #ff5000; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
 
     def _apply_branding(self):
         instance_name = self.user_manager.sm.get_meta("instance_name") or "VULTRAX CORE"
         self.app_title.setText(instance_name.upper())
 
         if self.prefill_user:
-            self.welcome_label.setText(MESSAGES.LOGIN.LOCKED_TITLE)
+            self.welcome_label.setText(str(MESSAGES.LOGIN.LOCKED_TITLE).upper())
             self.subtitle_label.setText(MESSAGES.LOGIN.UNLOCKING.format(user=self.prefill_user))
             self.username_input.setText(self.prefill_user)
             self.username_input.setReadOnly(True)
-            self.username_input.setStyleSheet("border: 2px solid rgba(148, 163, 184, 0.2); border-radius: 0px; padding: 0 15px; background: rgba(30, 41, 59, 0.4); color: #64748b;")
+            self.username_input.setStyleSheet("border: 2px solid @ghost_border; border-radius: 8px; padding: 0 15px; background: rgba(30, 41, 59, 0.4); color: #64748b;")
             self.password_input.setFocus()
+            
+            # Hide unnecessary links in locked state
+            self.btn_reg_toggle.hide()
+            self.btn_recovery.hide()
 
     def center_on_screen(self):
         """Centra la ventana en el monitor donde se encuentre el cursor o monitor principal."""
@@ -349,12 +456,19 @@ class LoginView(QMainWindow):
 
     def try_login(self):
         try:
+            # UI FEEDBACK: BARRA DE CARGA
+            self.login_button.setEnabled(False)
+            self.login_button.setText("VALIDATING ENCRYPTION...")
+            self.login_progress.show()
+            QApplication.processEvents()
+
             if self.reg_mode:
                 u = self.username_input.text().strip().upper()
                 p = self.password_input.text()
                 code = self.invitation_input.text().strip().upper()
                 if not u or not p or not code:
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_INCOMPLETE, MESSAGES.LOGIN.TEXT_INCOMPLETE)
+                    self._reset_login_ui()
                     return
                 success, msg = self.user_manager.register_with_invitation(code, u, p)
                 if success:
@@ -362,10 +476,12 @@ class LoginView(QMainWindow):
                     self._toggle_register_mode()
                 else:
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_REG_FAIL, msg)
+                self._reset_login_ui()
                 return
 
             if self.locked_until and time.time() < self.locked_until:
                 PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_LOCKED_WAIT, MESSAGES.LOGIN.TEXT_WAIT.format(seconds=int(self.locked_until - time.time())))
+                self._reset_login_ui()
                 return
 
             u = self.username_input.text().strip()
@@ -373,6 +489,7 @@ class LoginView(QMainWindow):
 
             if not u or not p:
                 PremiumMessage.info(self, MESSAGES.LOGIN.TITLE_MISSING_DATA, MESSAGES.LOGIN.TEXT_MISSING_DATA)
+                self._reset_login_ui()
                 return
 
             self.user_manager.prepare_for_user(u)
@@ -388,10 +505,12 @@ class LoginView(QMainWindow):
                 else:
                     # Si falla local también o no existe
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_INTERNAL_ERROR, "No se pudo contactar con el servidor y no hay registro local de este usuario.")
+                    self._reset_login_ui()
                     return
 
             if not prof or not prof["exists"]:
                 PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_USER_NOT_FOUND, MESSAGES.LOGIN.TEXT_USER_NOT_FOUND)
+                self._reset_login_ui()
                 return
 
             if not prof.get("active", False):
@@ -402,6 +521,7 @@ class LoginView(QMainWindow):
                 else:
                     self.user_manager.sm.log_event("LOGIN_BLOCKED", details="Intento en cuenta suspendida/inactiva", status="FAILURE", user_name=u, user_id=prof.get("id"))
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_ACCESS_BLOCKED, MESSAGES.LOGIN.TEXT_ACCOUNT_SUSPENDED)
+                self._reset_login_ui()
                 return
 
             # Si es offline, saltar la verificación de password (ya se hizo en check_local_login)
@@ -413,6 +533,7 @@ class LoginView(QMainWindow):
                     self.user_manager.sm.log_event("LOGIN_FAIL", details=f"Password incorrecto (Intento {self.failed_attempts})", status="FAILURE", user_name=u, user_id=prof.get("id"))
                     if self.failed_attempts >= 5: self.locked_until = time.time() + 60
                     PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_ACCESS_DENIED, MESSAGES.LOGIN.TEXT_INVALID_CREDS)
+                    self._reset_login_ui()
                     return
                 self.logger.info("[DEBUG] Password verification SUCCESS.")
 
@@ -425,7 +546,7 @@ class LoginView(QMainWindow):
             sec = None
 
             # LOG FINAL DE EXITO
-            self.user_manager.sm.log_event("LOGIN", details=f"Sesin iniciada: {u}", user_name=u, user_id=prof.get("id"))
+            self.user_manager.sm.log_event("LOGIN", details=f"Sesión iniciada: {u}", user_name=u, user_id=prof.get("id"))
             
             user_data = {
                 "username": u, 
@@ -442,16 +563,23 @@ class LoginView(QMainWindow):
             }
             if self.on_login_success:
                 # [ANTI-DUPLICATE FIX]
-                self.logger.info("[DEBUG] Disabling login button and calling on_login_success...")
-                self.login_button.setEnabled(False)
-                self.login_button.setText("LOADING VAULT...")
+                self.login_progress.setRange(0, 100)
+                self.login_progress.setValue(100)
+                self.login_button.setText("ACCESS GRANTED.")
                 QApplication.processEvents()
                 
                 self.on_login_success(p, sec, user_data)
-                self.logger.info("[DEBUG] on_login_success returned to try_login.")
                 self.fade_and_close()
 
         except Exception as e:
             import traceback
             self.logger.error(f"FAILED LOGIN: {e}\n{traceback.format_exc()}")
             PremiumMessage.error(self, MESSAGES.LOGIN.TITLE_INTERNAL_ERROR, str(e))
+            self._reset_login_ui()
+
+    def _reset_login_ui(self):
+        """Restaura el botón y oculta la barra de progreso en caso de error."""
+        self.login_button.setEnabled(True)
+        self.login_button.setText(MESSAGES.LOGIN.BTN_LOGIN if not self.reg_mode else MESSAGES.LOGIN.BTN_REG)
+        self.login_progress.hide()
+        self.login_progress.setRange(0, 0)

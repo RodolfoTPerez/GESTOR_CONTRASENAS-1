@@ -93,77 +93,33 @@ class AIGuardianCard(VultraxBaseCard):
         dot.setStyleSheet("color: #ef4444 !important; font-size: 14px !important; background: transparent !important;")
         h_alert.addWidget(dot)
 
-        self.lbl_alert_msg = QLabel("Critical vulnerability in 1 vaults detected")
+        self.lbl_alert_msg = QLabel()
         self.lbl_alert_msg.setStyleSheet("color: #f8fafc !important; font-size: 13px !important; font-weight: 700 !important; border: none !important; background: transparent !important;") 
         h_alert.addWidget(self.lbl_alert_msg)
         h_alert.addStretch()
         alert_layout.addLayout(h_alert)
 
         # Action Buttons Row
-        h_btns = QHBoxLayout()
-        h_btns.setSpacing(8)
+        self.h_btns = QHBoxLayout()
+        self.h_btns.setSpacing(8)
         
-        actions = ["APPLY", "REVIEW", "IGNORE"]
-        for action in actions:
-            btn = QPushButton(action)
-            btn.setCursor(Qt.PointingHandCursor)
-            # Standardized size 11px/12px, enforced with !important
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent !important;
-                    border: 1px solid #475569 !important;
-                    color: #94a3b8 !important;
-                    border-radius: 4px !important;
-                    padding: 4px 12px !important;
-                    font-size: 11px !important;
-                    font-weight: 700 !important;
-                    font-family: 'Segoe UI', sans-serif !important;
-                }
-                QPushButton:hover {
-                    border-color: #cbd5e1 !important;
-                    color: #f8fafc !important;
-                    background: rgba(255,255,255,0.05) !important;
-                }
-            """)
-            h_btns.addWidget(btn)
+        self.btn_apply = self._mk_action_btn("")
+        self.btn_review = self._mk_action_btn("")
+        self.btn_ignore = self._mk_action_btn("")
         
-        h_btns.addStretch()
-        alert_layout.addLayout(h_btns)
+        self.h_btns.addWidget(self.btn_apply)
+        self.h_btns.addWidget(self.btn_review)
+        self.h_btns.addWidget(self.btn_ignore)
+        self.h_btns.addStretch()
+        alert_layout.addLayout(self.h_btns)
         
         info_layout.addWidget(self.alert_box)
 
         # 3. Warning List
         self.warning_list_layout = QVBoxLayout()
         self.warning_list_layout.setSpacing(8)
-
-        # DEFINE CONTENT ATOMICALLY
-        warnings = [
-            ("WARNING: Security posture degraded", "#fbbf24"), # Amber
-            ("15 weak entropy keys identified", "#fbbf24"),
-            ("1 keys found in multiple clusters", "#fbbf24")
-        ]
-
-        # Populate Layout
-        for text, color in warnings:
-            row = QHBoxLayout()
-            row.setSpacing(8)
-            
-            # Icon
-            icon = QLabel(">") 
-            icon.setStyleSheet(f"color: {color} !important; font-weight: 900 !important; font-size: 13px !important; background: transparent !important;")
-            icon.setAttribute(Qt.WA_TranslucentBackground) 
-            
-            # Label
-            lbl = QLabel(text)
-            lbl.setStyleSheet(f"color: {color} !important; font-size: 13px !important; font-weight: 600 !important; background: transparent !important;")
-            lbl.setAttribute(Qt.WA_TranslucentBackground)
-            
-            row.addWidget(icon)
-            row.addWidget(lbl)
-            row.addStretch()
-            self.warning_list_layout.addLayout(row)
-
         info_layout.addLayout(self.warning_list_layout)
+        # Content will be populated in retranslateUi
         info_layout.addStretch()
 
         # COMPATIBILITY LAYER: Hidden ScrollArea to prevent dashboard crash
@@ -181,9 +137,62 @@ class AIGuardianCard(VultraxBaseCard):
             self.lbl_title.setText(MESSAGES.CARDS.AI_GUARDIAN_ACTIVE)
             self.lbl_risk_badge.setText(MESSAGES.CARDS.RISK_NEGLIGIBLE)
             self.feed_hdr.setText(MESSAGES.CARDS.INTEL_FEED)
+            
+            self.lbl_alert_msg.setText(MESSAGES.AI.ALERT_CRITICAL)
+            self.btn_apply.setText(MESSAGES.AI.BTN_APPLY)
+            self.btn_review.setText(MESSAGES.AI.BTN_REVIEW)
+            self.btn_ignore.setText(MESSAGES.AI.BTN_IGNORE)
+            
+            # Rebuild warning list (since they are nested layouts)
+            while self.warning_list_layout.count():
+                item = self.warning_list_layout.takeAt(0)
+                if item.layout():
+                    while item.layout().count():
+                        w = item.layout().takeAt(0).widget()
+                        if w: w.deleteLater()
+                    item.layout().deleteLater()
+                elif item.widget():
+                    item.widget().deleteLater()
+            
+            warnings = [
+                (MESSAGES.AI.WARN_DEGRADED, "#fbbf24"),
+                (MESSAGES.AI.WARN_ENTROPY, "#fbbf24"),
+                (MESSAGES.AI.WARN_CLUSTERS, "#fbbf24")
+            ]
+            for text, color in warnings:
+                row = QHBoxLayout()
+                row.setSpacing(8)
+                icon = QLabel(">")
+                icon.setStyleSheet(f"color: {color} !important; font-weight: 900 !important; font-size: 13px !important; background: transparent !important;")
+                lbl = QLabel(text)
+                lbl.setStyleSheet(f"color: {color} !important; font-size: 13px !important; font-weight: 600 !important; background: transparent !important;")
+                row.addWidget(icon); row.addWidget(lbl); row.addStretch()
+                self.warning_list_layout.addLayout(row)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Retranslate error in AIGuardianCard: {e}")
+
+    def _mk_action_btn(self, text):
+        btn = QPushButton(text)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setStyleSheet("""
+            QPushButton {
+                background: transparent !important;
+                border: 1px solid #475569 !important;
+                color: #94a3b8 !important;
+                border-radius: 4px !important;
+                padding: 4px 12px !important;
+                font-size: 11px !important;
+                font-weight: 700 !important;
+                font-family: 'Segoe UI', sans-serif !important;
+            }
+            QPushButton:hover {
+                border-color: #cbd5e1 !important;
+                color: #f8fafc !important;
+                background: rgba(255,255,255,0.05) !important;
+            }
+        """)
+        return btn
 
     def _add_feed_entry(self, tag, message, severity="info"):
         entry = QFrame()

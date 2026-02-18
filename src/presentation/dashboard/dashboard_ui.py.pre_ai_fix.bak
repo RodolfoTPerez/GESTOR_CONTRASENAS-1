@@ -700,17 +700,15 @@ class DashboardUI:
 
     def _show_ai_guardian_explanation(self):
         """Ghost Dialog for AI Guardian"""
-        # Access data via modular card attributes
-        if not hasattr(self, 'card_ai'): return
-        
-        risks_txt = self.card_ai.lbl_dot_count.text()
+        # Parse risks from the label string "🛡️ 0 RISKS"
+        risks_txt = self.lbl_dot_count.text()
         
         # Get live values from Radar
-        radar_vals = self.card_ai.ai_radar._values
-        radar_labels = self.card_ai.ai_radar._labels
+        radar_vals = self.ai_radar._values
+        radar_labels = self.ai_radar._labels
         
         data = {
-            MESSAGES.EXPLANATIONS.AI_STATUS: self.card_ai.lbl_ai_status.text(),
+            MESSAGES.EXPLANATIONS.AI_STATUS: self.lbl_ai_status.text(),
             MESSAGES.EXPLANATIONS.AI_RISKS: risks_txt,
             MESSAGES.EXPLANATIONS.AI_LATENCY: MESSAGES.EXPLANATIONS.VAL_AI_LATENCY_12,
             MESSAGES.EXPLANATIONS.AI_MODEL: MESSAGES.EXPLANATIONS.VAL_AI_MODEL_V4,

@@ -504,7 +504,14 @@
     },
     "AI": {
         "TITLE_HEAD": "GAIA: HEURISTIC ANALYSIS",
-        "TEXT_NO_VULNS": "✨ No structural anomalies detected."
+        "TEXT_NO_VULNS": "✨ No structural anomalies detected.",
+        "ALERT_CRITICAL": "Critical vulnerability in 1 vaults detected",
+        "BTN_APPLY": "APPLY",
+        "BTN_REVIEW": "REVIEW",
+        "BTN_IGNORE": "IGNORE",
+        "WARN_DEGRADED": "WARNING: Security posture degraded",
+        "WARN_ENTROPY": "15 weak entropy keys identified",
+        "WARN_CLUSTERS": "1 keys found in multiple clusters"
     },
     "RECOVERY": {
         "TITLE": "Access Recovery",
@@ -729,5 +736,21 @@
         "DESC_SYS_SCORE": "A global safety rating. It is calculated by combining the strength of your passwords, whether you have 2FA enabled, and any active risks.",
         "DESC_SYS_STATUS": "Indicates if all systems are working correctly. 'DEGRADED' means something is not 100% (Slow sync, no internet, or failed login attempts).",
         "DESC_SYS_LOAD": "Shows the current weight or load of your encrypted database in memory. Helps you know if the app is consuming too many resources or if your vault is becoming too heavy."
+    },
+    "QUICK_ACTIONS": {
+        "QA_USERS": "USERS",
+        "QA_AUDIT": "AUDIT",
+        "QA_MONITOR": "MONITOR",
+        "QA_INTEGRITY": "INTEGRITY",
+        "QA_SYNC": "SYNC",
+        "QA_SERVICES": "SERVICES",
+        "QA_VAULT": "VAULT",
+        "QA_HISTORY": "HISTORY",
+        "QA_AI_SCAN": "AI SCAN"
+    },
+    "INFO_TILES": {
+        "LBL_TOTAL": "TOTAL CREDENTIALS",
+        "LBL_WEAK": "VULNERABILITIES",
+        "LBL_AGE": "AVG AGE (DAYS)"
     }
 }

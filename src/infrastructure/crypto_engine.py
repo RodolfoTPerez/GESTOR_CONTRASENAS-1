@@ -24,6 +24,36 @@ import time
 from functools import wraps
 from src.infrastructure.security.rate_limiter import RateLimiter
 
+# NEW: Argon2 support
+try:
+    from argon2 import PasswordHasher, Type
+    from argon2.exceptions import VerifyMismatchError, InvalidHash
+    ARGON2_AVAILABLE = True
+except ImportError:
+    ARGON2_AVAILABLE = False
+    PasswordHasher = None
+    Type = None
+    logger = logging.getLogger(__name__)
+    logger.warning("argon2-cffi not installed, falling back to PBKDF2 only")
+
+# Import crypto configuration
+try:
+    from config.crypto_config import (
+        ARGON2_ENABLED, ARGON2_TIME_COST, ARGON2_MEMORY_COST,
+        ARGON2_PARALLELISM, ARGON2_HASH_LEN, ARGON2_SALT_LEN,
+        ARGON2_PREFIX, USE_ARGON2_FOR_NEW_USERS
+    )
+except ImportError:
+    # Fallback defaults if config not found
+    ARGON2_ENABLED = False
+    ARGON2_TIME_COST = 2
+    ARGON2_MEMORY_COST = 32768
+    ARGON2_PARALLELISM = 2
+    ARGON2_HASH_LEN = 32
+    ARGON2_SALT_LEN = 16
+    ARGON2_PREFIX = "$argon2"
+    USE_ARGON2_FOR_NEW_USERS = False
+
 logger = logging.getLogger(__name__)
 
 # [NEW] Global RateLimiter instance
@@ -32,31 +62,20 @@ auth_limiter = RateLimiter(max_attempts=5, window_seconds=60)
 def rate_limit(max_attempts=5, window=60):
     """
     Decorador para prevenir ataques de fuerza bruta/timing.
-    Crea un RateLimiter dedicado para esta función respetando sus parámetros.
+    Usa el nombre de la función como clave para evitar bypass mediante variación de parámetros.
     """
-    # [SENIOR FIX] Cada función decorada tiene su propia instancia de límites
     limiter = RateLimiter(max_attempts=max_attempts, window_seconds=window)
     
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Lógica Senior para Identificación de Llave:
-            # 1. Si es un método, el primer arg es 'self'. Lo saltamos.
-            relevant_args = args[1:] if args and hasattr(args[0], '__dict__') else args
-            
-            key_val = "global"
-            if relevant_args:
-                first = relevant_args[0]
-                if isinstance(first, (bytes, bytearray)):
-                    key_val = hashlib.sha256(first).hexdigest()[:12]
-                else:
-                    key_val = str(first).strip().lower()
-            
-            key = f"{func.__name__}_{key_val}"
+            # SECURITY FIX: Use function name only, not crypto material
+            # This prevents bypass by varying salts/nonces
+            key = f"{func.__name__}_global"
             
             if limiter.is_blocked(key):
                 remaining = limiter.get_remaining_seconds(key)
-                logger.warning(f"Rate limit exceeded for {key}. Blocked for {remaining}s")
+                logger.warning(f"Rate limit exceeded for {func.__name__}. Blocked for {remaining}s")
                 raise ValueError(f"Demasiados intentos. Por favor espere {remaining} segundos.")
             
             try:
@@ -139,6 +158,163 @@ class CryptoEngine:
             
         calculated_hash, _ = CryptoEngine.hash_user_password(password, salt)
         return calculated_hash == stored_hash
+    
+    # ===== ARGON2 PASSWORD HASHING (NEW) =====
+    
+    @staticmethod
+    def _get_argon2_hasher():
+        """Get configured Argon2 PasswordHasher instance."""
+        if not ARGON2_AVAILABLE:
+            raise RuntimeError("Argon2 not available - install argon2-cffi")
+        
+        return PasswordHasher(
+            time_cost=ARGON2_TIME_COST,
+            memory_cost=ARGON2_MEMORY_COST,
+            parallelism=ARGON2_PARALLELISM,
+            hash_len=ARGON2_HASH_LEN,
+            salt_len=ARGON2_SALT_LEN,
+            type=Type.ID  # Argon2id (hybrid mode)
+        )
+    
+    @staticmethod
+    def hash_user_password_argon2(password: str) -> str:
+        """
+        Hash password using Argon2id algorithm.
+        
+        Args:
+            password: Plain text password
+            
+        Returns:
+            str: Argon2 hash string (includes algorithm, params, salt, and hash)
+                 Format: $argon2id$v=19$m=32768,t=2,p=2$<salt>$<hash>
+                 
+        Example:
+            hash = CryptoEngine.hash_user_password_argon2("mypassword")
+            # hash = "$argon2id$v=19$m=32768,t=2,p=2$..."
+        """
+        if not ARGON2_ENABLED or not ARGON2_AVAILABLE:
+            raise RuntimeError("Argon2 is not enabled or not available")
+        
+        ph = CryptoEngine._get_argon2_hasher()
+        return ph.hash(password)
+    
+    @staticmethod
+    def verify_user_password_argon2(password: str, stored_hash: str) -> bool:
+        """
+        Verify password against Argon2 hash.
+        
+        Args:
+            password: Plain text password to verify
+            stored_hash: Argon2 hash string from database
+            
+        Returns:
+            bool: True if password matches
+            
+        Example:
+            is_valid = CryptoEngine.verify_user_password_argon2(
+                "mypassword",
+                "$argon2id$v=19$m=32768,t=2,p=2$..."
+            )
+        """
+        if not ARGON2_AVAILABLE:
+            return False
+        
+        try:
+            ph = CryptoEngine._get_argon2_hasher()
+            ph.verify(stored_hash, password)
+            return True
+        except (VerifyMismatchError, InvalidHash):
+            return False
+        except Exception as e:
+            logger.error(f"Argon2 verification error: {e}")
+            return False
+    
+    @staticmethod
+    def hash_user_password_auto(password: str, salt: bytes = None) -> tuple[str, bytes]:
+        """
+        Hash password using the best available algorithm.
+        
+        - If Argon2 is enabled: Use Argon2id (salt embedded in hash)
+        - Otherwise: Fall back to PBKDF2
+        
+        Args:
+            password: Plain text password
+            salt: Optional salt (only used for PBKDF2, ignored for Argon2)
+            
+        Returns:
+            tuple: (hash_string, salt_bytes)
+                   For Argon2: salt_bytes is empty (salt embedded in hash)
+                   For PBKDF2: salt_bytes contains the salt
+                   
+        Example:
+            hash, salt = CryptoEngine.hash_user_password_auto("password")
+            # If Argon2: hash = "$argon2id$...", salt = b''
+            # If PBKDF2: hash = "abc123...", salt = b'random16bytes'
+        """
+        if ARGON2_ENABLED and ARGON2_AVAILABLE and USE_ARGON2_FOR_NEW_USERS:
+            # Use Argon2 (salt is embedded in the hash string)
+            argon2_hash = CryptoEngine.hash_user_password_argon2(password)
+            return argon2_hash, b''  # Empty salt (embedded in hash)
+        else:
+            # Fall back to PBKDF2
+            return CryptoEngine.hash_user_password(password, salt)
+    
+    @staticmethod
+    def verify_user_password_auto(password: str, salt: any, stored_hash: str) -> bool:
+        """
+        Verify password with automatic algorithm detection.
+        
+        Detects algorithm based on hash format:
+        - Starts with "$argon2" → Use Argon2
+        - Otherwise → Use PBKDF2
+        
+        Args:
+            password: Plain text password to verify
+            salt: Salt (only used for PBKDF2, ignored for Argon2)
+            stored_hash: Hash string from database
+            
+        Returns:
+            bool: True if password matches
+            
+        Example:
+            # Argon2 hash
+            is_valid = CryptoEngine.verify_user_password_auto(
+                "password", None, "$argon2id$v=19$..."
+            )
+            
+            # PBKDF2 hash
+            is_valid = CryptoEngine.verify_user_password_auto(
+                "password", salt_bytes, "abc123..."
+            )
+        """
+        if not stored_hash:
+            return False
+        
+        # Detect algorithm by hash prefix
+        if stored_hash.startswith(ARGON2_PREFIX):
+            # Argon2 hash
+            return CryptoEngine.verify_user_password_argon2(password, stored_hash)
+        else:
+            # PBKDF2 hash (legacy) - normalize salt to bytes
+            if not salt:
+                return False
+            
+            # Convert salt to bytes if needed
+            if isinstance(salt, str):
+                try:
+                    salt_bytes = bytes.fromhex(salt)
+                except ValueError:
+                    # If not hex, try encoding
+                    salt_bytes = salt.encode('utf-8')
+            elif isinstance(salt, (bytes, bytearray)):
+                salt_bytes = bytes(salt)
+            elif hasattr(salt, '__bytes__'):
+                salt_bytes = bytes(salt)
+            else:
+                logger.error(f"Invalid salt type: {type(salt)}")
+                return False
+            
+            return CryptoEngine.verify_user_password(password, salt_bytes, stored_hash)
     
     @staticmethod
     def generate_vault_master_key() -> bytes:

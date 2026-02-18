@@ -1,10 +1,12 @@
 import sqlite3
 import re
 import logging
+import hashlib
 from pathlib import Path
 from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
+
 
 class DBManager:
     """
@@ -33,7 +35,7 @@ class DBManager:
         self.db_path = data_dir / filename
         self.conn = sqlite3.connect(str(self.db_path), timeout=30, check_same_thread=False)
         self._check_schema()
-
+    
     def _check_schema(self) -> None:
         try:
             self.conn.execute("""
@@ -66,6 +68,15 @@ class DBManager:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER, user_name TEXT, 
                     action TEXT, service TEXT, status TEXT DEFAULT 'SUCCESS', details TEXT, 
                     device_info TEXT, synced INTEGER DEFAULT 0, user_id TEXT
+                )
+            """)
+            
+            # Table to track deletions made offline that need to be synced to cloud
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_deletes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cloud_id TEXT NOT NULL,
+                    deleted_at INTEGER NOT NULL
                 )
             """)
             

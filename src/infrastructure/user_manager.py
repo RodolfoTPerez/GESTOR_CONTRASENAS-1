@@ -7,11 +7,25 @@ from src.infrastructure.crypto_engine import CryptoEngine, rate_limit
 import base64, secrets, hashlib, re, logging
 from src.domain.messages import MESSAGES
 
+# NEW: Import refactored components
+from src.infrastructure.auth.auth_manager import AuthManager
+from src.infrastructure.hwid.hwid_service import HWIDService
+
 class UserManager:
     def __init__(self, secrets_manager=None):
         self.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         self.sm = secrets_manager
         self.logger = logging.getLogger(__name__)
+        
+        # NEW: Initialize component services
+        self.auth = AuthManager(
+            db_manager=self.sm.db if self.sm else None,
+            supabase_client=self.supabase,
+            security_service=self.sm.security if self.sm else None
+        )
+        self.hwid = HWIDService(
+            user_repository=self.sm.users if self.sm else None
+        )
 
     def sync_vault_name(self, vault_id, name):
         """Sincroniza el nombre de la bóveda con la nube."""
@@ -57,7 +71,7 @@ class UserManager:
     # ------------------------------------------------------------------
     def generate_totp_secret(self) -> str:
         """Genera un nuevo secreto aleatorio para 2FA."""
-        return pyotp.random_base32()
+        return self.auth.generate_totp_secret()
     
     # ------------------------------------------------------------------
     #  AUTENTICACIÓN Y HASHING (UNIFICADO)
@@ -83,14 +97,17 @@ class UserManager:
                         b64_candidate = raw.decode('ascii')
                         if 16 <= len(base64.b64decode(b64_candidate)) <= 64:
                             return base64.b64decode(b64_candidate)
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"Not a base64-encoded bytea: {e}")
                 return raw
-            except: pass
+            except Exception as e:
+                logger.debug(f"Could not decode as hex: {e}")
 
         # Caso: Es Base64 directo
         if re.match(r'^[A-Za-z0-9+/=]+$', s) and len(s) >= 32 and (len(s) % 4 == 0):
             try: return base64.b64decode(s)
-            except: pass
+            except Exception as e:
+                logger.debug(f"Not valid base64: {e}")
         
         return s.encode('utf-8')
 
@@ -131,22 +148,15 @@ class UserManager:
 
     def hash_password(self, password: str, salt: Any = None):
         """
-        Genera un hash seguro delegando en CryptoEngine.
+        Genera un hash seguro delegando en AuthManager.
         Mantiene el retorno (hash, salt_hex) para compatibilidad con la capa de datos.
         """
-        salt_bin = self._normalize_salt(salt)
-        pwd_hash, salt_out = CryptoEngine.hash_user_password(password, salt_bin)
-        return pwd_hash, salt_out.hex()
+        return self.auth.hash_password(password, salt)
 
     @rate_limit(max_attempts=5, window=60)
     def verify_password(self, password: str, salt: Any, stored_hash: str) -> bool:
-        """Verifica una contraseña delegando en el motor centralizado CryptoEngine."""
-        if not salt or not stored_hash:
-            return False
-            
-        salt_bin = self._normalize_salt(salt)
-        result = CryptoEngine.verify_user_password(password, salt_bin, stored_hash)
-        
+        """Verifica una contraseña delegando en AuthManager."""
+        result = self.auth.verify_password(password, salt, stored_hash)
         self.logger.info(f"[Auth] verify_password (Unified): Result={result}")
         return result
 
@@ -271,9 +281,16 @@ class UserManager:
         # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
         # 1. Always stage cloud credentials in vault_access if different or new
         if wrapped_v_bytes and cloud_profile.get("vault_id"):
-            # We save this as a fallback in the vault_access table
-            self.logger.info(f"[Sync] Staging cloud vault key for {cloud_profile.get('vault_id')} in vault_access table.")
-            self.sm.users.save_vault_access(cloud_profile.get("vault_id"), wrapped_v_bytes)
+            # [OPTIMIZATION] Solo hacer staging si la clave es diferente a la local
+            # Comparamos con vault_access (que es la fuente de verdad para metadatos de llaves)
+            vault_acc = self.sm.users.get_vault_access(cloud_profile.get("vault_id"))
+            local_wrapped = self.sm._ensure_bytes(vault_acc.get("wrapped_master_key")) if vault_acc else None
+            
+            if wrapped_v_bytes != local_wrapped:
+                self.logger.info(f"[Sync] Staging UPDATED vault key for {cloud_profile.get('vault_id')} in vault_access table.")
+                self.sm.users.save_vault_access(cloud_profile.get("vault_id"), wrapped_v_bytes)
+            else:
+                self.logger.debug(f"[Sync] Vault key unchanged for {cloud_profile.get('vault_id')}, skipping staging")
 
         # 2. DECISION: Do we trust the local primary credentials?
         # If we have a local key/salt pair, we keep them in the 'users' table (Primary).
@@ -313,7 +330,8 @@ class UserManager:
                     except:
                         # Error de decodificación -> es binario cifrado
                         totp_raw = base64.b64encode(totp_bytes).decode('ascii')
-                except: pass
+                except Exception as e:
+                    logger.debug(f"Could not process TOTP bytes: {e}")
 
             # 2. Detectar si el secreto está en texto plano o cifrado
             is_plaintext = False
@@ -410,26 +428,8 @@ class UserManager:
         return {"exists": True, "active": True, "status": "error"}
 
     def verify_totp(self, secret: str, token: str) -> bool:
-            """Verificación 2FA limpia y directa (patrón profesional recomendado)."""
-            try:
-                if not secret or not token: return False
-                
-                # 1. Limpiar espacios y normalizar a mayúsculas
-                secreto_limpio = str(secret).strip().replace(" ", "").upper()
-                if not secreto_limpio: return False
-                
-                # 2. Añadir padding si falta (Base32 requiere múltiplos de 8)
-                import re
-                b32 = re.sub(r'[^A-Z2-7]', '', secreto_limpio)
-                mod = len(b32) % 8
-                if mod != 0: b32 += '=' * (8 - mod)
-                
-                # 3. Validar con ventana de tiempo (90 segundos de tolerancia)
-                totp = pyotp.TOTP(b32)
-                return totp.verify(str(token).strip(), valid_window=1)
-            except Exception as e:
-                self.logger.error(f"2FA Verification Error: {e}")
-                return False
+            """Verificación 2FA delegando en AuthManager."""
+            return self.auth.verify_totp(secret, token)
                 
     def validate_user_access(self, username: str):
         """

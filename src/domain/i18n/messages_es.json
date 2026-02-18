@@ -503,8 +503,15 @@
         "TEXT_LOAD_FAIL": "Fallo al montar la partición: {error}"
     },
     "AI": {
-        "TITLE_HEAD": "GAIA: ANÁLISIS HEURÍSTICO",
-        "TEXT_NO_VULNS": "✨ Sin anomalías estructurales detectadas."
+        "TITLE_HEAD": "GAIA: HEURISTIC ANALYSIS",
+        "TEXT_NO_VULNS": "✨ Sin anomalías estructurales detectadas.",
+        "ALERT_CRITICAL": "Vulnerabilidad crítica detectada en 1 bóveda",
+        "BTN_APPLY": "APLICAR",
+        "BTN_REVIEW": "REVISAR",
+        "BTN_IGNORE": "IGNORAR",
+        "WARN_DEGRADED": "ADVERTENCIA: Postura de seguridad degradada",
+        "WARN_ENTROPY": "15 llaves con entropía débil identificadas",
+        "WARN_CLUSTERS": "1 llave hallada en múltiples clusters"
     },
     "RECOVERY": {
         "TITLE": "Restauración de Acceso",
@@ -729,5 +736,21 @@
         "DESC_SYS_SCORE": "Es una calificación global de tu seguridad. Se calcula combinando la fortaleza de tus contraseñas, si tienes activado el doble factor (2FA) y si hay riesgos activos.",
         "DESC_SYS_STATUS": "Indica si todos los sistemas funcionan correctamente. Si aparece 'DEGRADED', significa que algo no está al 100% (Sincronización lenta, sin internet o intentos fallidos).",
         "DESC_SYS_LOAD": "Muestra el peso o la carga actual de tu base de datos encriptada en memoria. Te ayuda a saber si la aplicación está consumiendo muchos recursos o si tu bóveda se está volviendo demasiado pesada."
+    },
+    "QUICK_ACTIONS": {
+        "QA_USERS": "USUARIOS",
+        "QA_AUDIT": "AUDITORÍA",
+        "QA_MONITOR": "MONITOR",
+        "QA_INTEGRITY": "INTEGRIDAD",
+        "QA_SYNC": "SINCRONIZAR",
+        "QA_SERVICES": "SERVICIOS",
+        "QA_VAULT": "BÓVEDA",
+        "QA_HISTORY": "HISTORIAL",
+        "QA_AI_SCAN": "ESCANEO IA"
+    },
+    "INFO_TILES": {
+        "LBL_TOTAL": "TOTAL CREDENCIALES",
+        "LBL_WEAK": "VULNERABILIDADES",
+        "LBL_AGE": "ANTIGÜEDAD (DÍAS)"
     }
 }
