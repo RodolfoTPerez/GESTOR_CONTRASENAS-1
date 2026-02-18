@@ -34,6 +34,14 @@ class DBManager:
         
         self.db_path = data_dir / filename
         self.conn = sqlite3.connect(str(self.db_path), timeout=30, check_same_thread=False)
+        
+        # [CONCURRENCY HARDENING] Enable WAL mode for multi-threaded performance
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL;")
+            self.conn.execute("PRAGMA synchronous=NORMAL;")
+        except Exception as e:
+            logger.warning(f"Could not enable WAL mode: {e}")
+            
         self._check_schema()
     
     def _check_schema(self) -> None:

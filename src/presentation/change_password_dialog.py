@@ -243,7 +243,8 @@ class ChangePasswordDialog(QDialog):
             
             if self.sync_manager:
                 try: self.sync_manager.backup_to_supabase()
-                except: pass
+                except Exception as e:
+                    self.logger.debug(f"Cloud backup failed after password rotation: {e}")
 
             PremiumMessage.success(self, MESSAGES.SECURITY.TITLE_SUCCESS, "La Firma Maestra ha sido rotada exitosamente.")
             self.accept()

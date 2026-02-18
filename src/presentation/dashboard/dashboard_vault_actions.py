@@ -49,7 +49,8 @@ class DashboardVaultActions:
             # Fallback para el modelo antiguo (si existe)
             item = self.table.item(row, 3)
             if item: return item.text().replace("🔐 ", "").replace("🔑 ", "").replace("🏢 ", "").replace(" (MARCADO PARA BORRAR)", "").strip()
-        except: pass
+        except Exception as e:
+            logger.debug(f"Failed to extract service name from table row: {e}")
         return None
 
     def _on_edit(self):

@@ -13,35 +13,64 @@ from src.presentation.change_password_dialog import ChangePasswordDialog
 class UserManagementDialog(QDialog):
     def __init__(self, user_manager, current_username, parent=None):
         super().__init__(parent)
+        
+        # [ESTRATEGIA TOTAL]
+        # 1. Congelar pintura
+        self.setUpdatesEnabled(False)
+        self.setWindowOpacity(0.0) # Invisible al inicio
+        
+        # 2. Atributos de pintura profunda
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        
+        # 3. Forzar Modo Oscuro en Windows (Nivel Hardware/SO)
+        try:
+            from ctypes import windll, c_int, byref, sizeof
+            HWND = int(self.winId())
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            state = c_int(1)
+            windll.dwmapi.DwmSetWindowAttribute(HWND, DWMWA_USE_IMMERSIVE_DARK_MODE, byref(state), sizeof(state))
+        except Exception: 
+            pass # No-op en otros SO
+            
         self.user_manager = user_manager
         self.admin_name = current_username
         self.setWindowTitle(MESSAGES.USERS.TITLE_WINDOW)
         self.setFixedSize(1150, 700) 
         
+        from PyQt5.QtCore import QSettings
+        if current_username:
+             self.settings = QSettings(ThemeManager.APP_ID, f"VultraxCore_{current_username}")
+        else:
+             self.settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+        
+        self.theme = ThemeManager()
+        active_theme = self.settings.value("theme_active", "tactical_dark")
+        self.theme.set_theme(active_theme)
+        colors = self.theme.get_theme_colors()
+
+        # [SOLUCIÓN DEL USUARIO 1] Fondo oscuro HARDCODED inmediato 
+        # (Sin esperar a que cargue el QSS externo)
+        bg_hex = colors.get('bg', '#050505')
+        
+        # [SOLUCIÓN COMBINADA] Aplicamos opacidad mínima y fondo forzado
+        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex}; }}")
+        
+        # Cargar QSS completo asegurando que el fondo persista
+        full_qss = self.theme.load_stylesheet("dialogs")
+        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex} !important; }}\n{full_qss}")
+
+        from PyQt5.QtWidgets import QApplication
+        QApplication.processEvents() # Procesar para que el estilo se asiente
+
         # [THEME FIX] Wrapper Strategy for Windows Dialogs
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         
         self.frame = QFrame()
-        self.frame.setObjectName("DialogFrame") # Need to support this in QSS or reuse ServiceDialogFrame style if applicable, but better to use a generic one.
-        # Check styles/dialogs.qss for generic QFrame styling or just let inheritance work. 
-        # Actually, let's verify if we need specific object name. ServiceDialog uses "ServiceDialogFrame".
-        # Let's use a generic name or just apply the theme to the frame.
+        self.frame.setObjectName("DialogFrame")
         self.frame.setAttribute(Qt.WA_StyledBackground, True)
         self.main_layout.addWidget(self.frame)
-
-        from PyQt5.QtCore import QSettings
-        # [SENIOR FIX] Use Standardized Global Scope
-        if current_username:
-             self.settings = QSettings(ThemeManager.APP_ID, f"VultraxCore_{current_username}")
-        else:
-             self.settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
-        self.theme = ThemeManager()
-        active_theme = self.settings.value("theme_active", "tactical_dark")
-        self.theme.set_theme(active_theme)
-        
-        # Apply theme specific to dialogs
-        self.setStyleSheet(self.theme.load_stylesheet("dialogs"))
         
         # [CRITICAL] Force background on the Frame via Property/QSS
         # Removed manual inline style to rely on QSS rules
@@ -194,6 +223,12 @@ class UserManagementDialog(QDialog):
         
         # Cargar datos iniciales
         self._refresh_data()
+
+        # [REVEAL] Reactivar y mostrar suavemente
+        self.setUpdatesEnabled(True)
+        from PyQt5.QtCore import QTimer
+        # 150ms es el tiempo ideal para que el hardware de Windows aplique el DWM attribute
+        QTimer.singleShot(150, lambda: self.setWindowOpacity(1.0))
 
     def _toggle_password_visibility(self):
         """Toggle password visibility"""

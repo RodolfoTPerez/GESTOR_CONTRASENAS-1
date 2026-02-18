@@ -2,9 +2,12 @@ import os
 import hashlib
 import base64
 import re
+import logging
 from typing import Optional, List, Tuple, Union
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from src.infrastructure.crypto_engine import CryptoEngine
+
+logger = logging.getLogger(__name__)
 
 class SecurityService:
     """
@@ -20,14 +23,17 @@ class SecurityService:
         if s.startswith("\\x") or s.startswith("\\\\x"):
             hex_str = s[2:] if s.startswith("\\x") else s[3:]
             try: return bytes.fromhex(hex_str)
-            except: pass
+            except Exception as e:
+                logger.debug(f"Hex normalization failed for {hex_str[:10]}...: {e}")
         if len(s) >= 32 and all(c in "0123456789abcdefABCDEF" for c in s):
             try: return bytes.fromhex(s)
-            except: pass
+            except Exception as e:
+                logger.debug(f"Hex-like normalization failed for {s[:10]}...: {e}")
         try:
             if 16 <= len(s) <= 128 and re.match(r'^[A-Za-z0-9+/=]+$', s):
                 return base64.b64decode(s)
-        except: pass
+        except Exception as e:
+            logger.debug(f"Base64 normalization failed: {e}")
         return s.encode('utf-8')
 
     def derive_keke(self, password: str, salt: bytes) -> bytes:
@@ -39,8 +45,7 @@ class SecurityService:
             if pk and len(pk) >= 28:
                 return bytearray(AESGCM(kek).decrypt(pk[:12], pk[12:], None))
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug(f"Protected key decryption failed: {e}")
+            logger.debug(f"Protected key decryption failed: {e}")
         return None
 
     def encrypt_data(self, data_plain: str, key: bytes) -> Tuple[bytes, bytes, str]:
@@ -56,8 +61,7 @@ class SecurityService:
                 dec_bytes = AESGCM(k).decrypt(nonce, enc_data, None)
                 return dec_bytes.decode("utf-8")
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).debug(f"Candidate key decryption failed: {e}")
+                logger.debug(f"Candidate key decryption failed: {e}")
                 continue
         return "[Bloqueado 🔑]"
 

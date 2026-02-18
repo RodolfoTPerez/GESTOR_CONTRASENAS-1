@@ -9,11 +9,12 @@ class SessionService:
     """
     Manages the active user context and security keys in RAM.
     Implements Zeroing memory logic for keys.
-    Thread-safe implementation using RLock.
+    Thread-safe implementation using RLock and operation tracking.
     """
     def __init__(self) -> None:
         # Thread synchronization
         self._lock = threading.RLock()
+        self._active_ops = 0  # Counter for background operations
         
         # User context
         self.current_user: Optional[str] = None
@@ -27,6 +28,16 @@ class SessionService:
         self._vault_key: Optional[bytearray] = None
         self._master_key: Optional[bytearray] = None
         self.kek_candidates: dict[str, Any] = {}
+
+    def start_operation(self):
+        """Signals that a sensitive operation (like sync) is starting."""
+        with self._lock:
+            self._active_ops += 1
+
+    def end_operation(self):
+        """Signals that a sensitive operation has finished."""
+        with self._lock:
+            self._active_ops = max(0, self._active_ops - 1)
 
     # Thread-safe properties for sensitive keys
     @property
@@ -68,7 +79,16 @@ class SessionService:
             self.session_id = str(uuid.uuid4())
 
     def clear(self) -> None:
+        """
+        Purges session and zeroes keys in memory.
+        If background operations are active, it defers key zeroing to prevent crashes.
+        """
         with self._lock:
+            if self._active_ops > 0:
+                logger.warning(f"Session clear requested while {self._active_ops} ops active. Postponing full zeroing.")
+                self.current_user = None # Mark as logged out but keep keys for active ops
+                return
+
             # Security: Zeroing out sensitive keys in memory
             for key_attr in ["_master_key", "_personal_key", "_vault_key"]:
                 key_obj = getattr(self, key_attr, None)
@@ -78,11 +98,6 @@ class SessionService:
                     setattr(self, key_attr, None)
             
             if self.kek_candidates:
-                for k in self.kek_candidates:
-                    cand = self.kek_candidates[k]
-                    if isinstance(cand, (bytearray, bytes)):
-                        # Note: bytes are immutable, so we can't zero them easily, but replacing them is a start.
-                        pass
                 self.kek_candidates = {}
 
             self.current_user = None

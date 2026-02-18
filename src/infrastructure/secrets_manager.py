@@ -216,8 +216,10 @@ class SecretsManager:
                                 # [HEAL] Update primary users table so next login is normal
                                 try:
                                     self.users.update_vault_access(new_user, self.session.current_vault_id, w_va_raw, synced=1)
-                                except: pass
-                            except: pass
+                                except Exception as e:
+                                    logger.debug(f"Forensic update of primary vault table failed: {e}")
+                            except Exception as e:
+                                logger.debug(f"Forensic unwrap from vault_access failed: {e}")
 
                 if not already_healed:
                     # 2. HEALING: Attempt recovery with common variations
@@ -736,7 +738,8 @@ class SecretsManager:
             try:
                 cloud_p = user_manager.validate_user_access(self.session.current_user)
                 logger.info("Cloud identity verified for rotation.")
-            except: pass
+            except Exception as e:
+                logger.warning(f"Cloud identity verification failed for rotation: {e}")
 
         if not self.session.personal_key:
             logger.info("Session personal key missing. Attempting emergency recovery with old password...")
@@ -774,10 +777,11 @@ class SecretsManager:
         salt_candidates = [s for s in [cloud_v_salt, local_v_salt, b"public_salt"] if s]
 
         # Prepare cloud fallback data
-        cloud_accesses = []
         if user_manager and self.session.current_user_id:
-             try: cloud_accesses = user_manager.get_cloud_vault_accesses(self.session.current_user_id)
-             except: pass
+             try:
+                 cloud_accesses = user_manager.get_cloud_vault_accesses(self.session.current_user_id)
+             except Exception as e:
+                 logger.debug(f"Cloud vault access fetch failed for rotation: {e}")
 
         for acc in all_accesses:
             v_id = acc['vault_id']
@@ -905,7 +909,8 @@ class SecretsManager:
         if active_vault_key:
              try:
                  self.session.vault_key = bytearray(self.security.unwrap_key(active_vault_key, new_password, new_v_salt))
-             except: pass
+             except Exception as e:
+                 logger.error(f"Failed to unwrap vault key post-rotation: {e}")
 
         self.log_event("CHANGE PASSWORD", details="User password and ALL vault keys successfully rotated and synced")
 

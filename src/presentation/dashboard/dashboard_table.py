@@ -349,7 +349,8 @@ class DashboardTableManager:
                      if len(top) > 18: top = top[:15] + "..."
                      self.lbl_va_access.setText(f"Most accessed vault: {top}")
                      self.lbl_va_access.setStyleSheet(self.theme.apply_tokens("color: @primary; font-family: @font-family-main; font-size: 11px; font-weight: 700;"))
-                 except: pass
+                 except Exception as e:
+                     logger.debug(f"Audit analysis for vault metrics failed: {e}")
 
             # --- AI GUARDIAN (Recomendaciones Activas) ---
             if hasattr(self, 'ai_layout'):
@@ -461,7 +462,8 @@ class DashboardTableManager:
                     try:
                         u_count = self.user_manager.get_user_count()
                         self.stat_users_val.setText(str(u_count))
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"Admin user count update failed: {e}")
                 
                 # 2. Active Sessions (Real-time Presence)
                 if hasattr(self, 'stat_sessions_val') and hasattr(self, 'sync_manager'):
@@ -480,7 +482,8 @@ class DashboardTableManager:
                     try:
                         log_count = self.sm.get_audit_log_count()
                         self.stat_logs_val.setText(str(log_count))
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"Admin audit log count update failed: {e}")
                 
                 # 3. Database Metrics (Sizes)
                 if hasattr(self, 'lbl_integrity_info'):
@@ -489,7 +492,8 @@ class DashboardTableManager:
                         db_size_mb = os.path.getsize(self.sm.db_path) / (1024 * 1024)
                         self.lbl_integrity_info.setText(f"SQLite Load: {db_size_mb:.2f} MB\nSystem State: COMPACTED\nSecurity Nodes: ACTIVE")
                         self.lbl_integrity_info.setStyleSheet(self.theme.apply_tokens("color: @primary; font-size: 10px; font-family: @font-family-main; font-weight: 700;"))
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"Admin DB load metric update failed: {e}")
 
                 # 4. System Integrity (Threats Card for Admin)
                 if hasattr(self, 'lbl_threats_info'):
@@ -911,7 +915,8 @@ class DashboardTableManager:
                     try:
                         # Notificación táctica
                         Notifications.show_toast(self, "AI Guardian", "PROTOCOLO DE REPARACIÓN ACTIVADO.\n\nLa bóveda ha sido filtrada para mostrar solo los nodos vulnerables detectados (⚠️).", "🛡️", "#f59e0b")
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"AI Guardian toast notification failed: {e}")
 
         elif "Audit" in action:
             if hasattr(self, 'main_stack') and hasattr(self, 'view_activity'):

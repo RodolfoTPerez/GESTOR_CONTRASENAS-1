@@ -1,6 +1,7 @@
 import math
 import random
 import urllib.request
+import logging
 from PyQt5.QtWidgets import QApplication, QWidget, QDesktopWidget
 from PyQt5.QtCore import Qt, QTimer, QRectF, QPointF, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor, QPen, QRadialGradient, QBrush, QPainterPath, QFont, QPolygonF, QLinearGradient, QConicalGradient
@@ -8,6 +9,8 @@ from PyQt5.QtGui import QPainter, QColor, QPen, QRadialGradient, QBrush, QPainte
 from src.infrastructure.database.db_manager import DBManager
 from src.infrastructure.repositories.secret_repo import SecretRepository
 from src.domain.services.session_service import SessionService
+
+logger = logging.getLogger(__name__)
 
 class HyperRealVaultCore(QWidget):
     """
@@ -72,14 +75,16 @@ class HyperRealVaultCore(QWidget):
                 if isinstance(name_val, bytes):
                     name_val = name_val.decode('utf-8', errors='ignore')
                 self.vault_name = str(name_val).upper()
-        except: pass
+        except Exception as e:
+            logger.debug(f"Failed to fetch real vault name: {e}")
 
     def _check_connectivity(self):
         try:
             import socket
             socket.create_connection(("8.8.8.8", 53), timeout=2)
             self._is_online = True
-        except:
+        except Exception as e:
+            logger.debug(f"Connectivity check failed: {e}")
             self._is_online = False
 
     def _generate_sphere_points(self):

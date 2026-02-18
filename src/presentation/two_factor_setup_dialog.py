@@ -148,7 +148,8 @@ class TwoFactorSetupDialog(QDialog):
             if isinstance(vault_salt, str): # Por si acaso viniera como string b64
                 import base64
                 try: vault_salt = base64.b64decode(vault_salt)
-                except: pass
+                except Exception as e:
+                    self.logger.debug(f"Vault salt base64 decoding failed during 2FA setup: {e}")
             
             self.logger.info(f"Syncing 2FA for {username} with cloud...")
             cloud_success = self.user_manager.save_totp_secret(username, self.temp_secret, master_pwd, vault_salt)

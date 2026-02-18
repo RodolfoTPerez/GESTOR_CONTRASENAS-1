@@ -160,108 +160,65 @@ class UserManager:
         self.logger.info(f"[Auth] verify_password (Unified): Result={result}")
         return result
 
-    def sync_user_to_local(self, username, cloud_profile):
-        """
-        Persiste el perfil de usuario de la nube al almacenamiento SQLite local.
-        
-        Realiza un 'Upsert' inteligente que garantiza que las llaves de protección
-        y los salts locales no se pierdan, manteniendo la capacidad de login offline.
-        
-        Args:
-            username: Nombre del usuario a sincronizar.
-            cloud_profile: Diccionario con los datos provenientes de Supabase.
-            
-        Returns:
-            bool: True si la persistencia fue exitosa.
-        """
-        if not username:
-            self.logger.warning("Aborting sync: username is None")
-            return False
-            
-        username_clean = username.upper().replace(" ", "")
+    def _ensure_db_context(self, username_clean):
+        """Asegura que estamos operando en la base de datos de bóveda del usuario."""
         if not self.sm: return False
-
-        # [CRITICAL FIX] Ensure we write to the specific User DB, not Global DB
-        # This prevents 'Phantom Salt' bug where profile is saved to vultrax.db and lost.
         try:
-             current_db = self.sm.db_path.name if self.sm.db_path else ""
-             target_db = f"vault_{username_clean.lower()}.db"
-             
-             # If we are in global DB or wrong DB, switch immediately
-             # Note: 'vultrax.db' is only for pre-login, users need their own vault DB.
-             if current_db == "vultrax.db" or (current_db != target_db and "vault_" in current_db):
-                 self.logger.info(f"Switching DB context to {target_db} before saving profile...")
-                 self.sm.reconnect(username_clean)
+            current_db = self.sm.db_path.name if self.sm.db_path else ""
+            target_db = f"vault_{username_clean.lower()}.db"
+            
+            if current_db == "vultrax.db" or (current_db != target_db and "vault_" in current_db):
+                self.logger.info(f"Switching DB context to {target_db} before sync...")
+                self.sm.reconnect(username_clean)
+            return True
         except Exception as e:
-             self.logger.warning(f"Could not verify DB context: {e}")
-        
-        # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
-        # 1. Always stage cloud credentials in vault_access if different or new
-        # Initialize these variables here, as they are used before the new logic.
-        vault_salt_bytes = None
-        protected_key_bytes = None
-        wrapped_v_bytes = None
+            self.logger.warning(f"Could not verify DB context: {e}")
+            return False
 
-        # Obtener el perfil local una sola vez para las comparaciones de preservación
-        local_profile = self.sm.get_local_user_profile(username_clean)
-        
-        # [HEALING DETECTION] 
-        # Check if the current session for THIS user is broken (unwrap failed)
-        session_is_broken = (self.sm.session.current_user == username_clean and self.sm.vault_key is None)
-        if session_is_broken:
-             self.logger.info(f"Healing Mode: Local broken session detected for {username_clean}. Preferring Cloud Credentials.")
-
-        # 1. Manejar Vault Salt (UNIFICADO)
+    def _process_vault_salt(self, cloud_profile, local_profile, username_clean):
+        """Normaliza y preserva el salt de la bóveda."""
         vault_salt_bytes = self._normalize_to_bytes(cloud_profile.get("vault_salt"))
         
         if not vault_salt_bytes:
-            # Si en la nube no hay salt, intentamos REUTILIZAR el local existente para no romper las llaves
             if local_profile and local_profile.get("vault_salt"):
                 vault_salt_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
                 self.logger.info(f"Preservando Salt local existente para {username_clean}.")
             else:
-                # Si sigue siendo None (usuario nuevo sin salt en ningún lado), generamos uno
                 vault_salt_bytes = secrets.token_bytes(16)
                 self.logger.info(f"Generando Salt nuevo para {username_clean}.")
+        return vault_salt_bytes
 
-        # 2. Manejar Protected Key (SVK) - [PRESERVACIÓN CRÍTICA UNIFICADA]
+    def _process_protected_key(self, cloud_profile, local_profile, session_is_broken):
+        """Normaliza y preserva la Protected Key (SVK)."""
         protected_key_bytes = self._normalize_to_bytes(cloud_profile.get("protected_key"))
         
-        # [PRESERVACIÓN CRÍTICA] Si la nube no mandó protected_key, mantenemos la local
-        # [HEALING] Unless we are in healing mode and cloud DOES have a key
         if not protected_key_bytes and local_profile and local_profile.get("protected_key"):
             protected_key_bytes = self.sm._ensure_bytes(local_profile["protected_key"])
             self.logger.info("Preservando Protected Key local.")
         elif session_is_broken and protected_key_bytes:
-             self.logger.info("Healing: Applying Cloud Protected Key (Bypassing local preservation).")
-        
-        # 3. Manejar Wrapped Vault Key (Equipo) - [PRESERVACIÓN CRÍTICA]
+            self.logger.info("Healing: Applying Cloud Protected Key (Bypassing local preservation).")
+        return protected_key_bytes
+
+    def _process_wrapped_vault_key(self, cloud_profile, local_profile, session_is_broken):
+        """Decodifica, normaliza y aplica lógica de Double-Buffer a la llave de bóveda."""
         wrapped_v_key = cloud_profile.get("wrapped_vault_key")
+        wrapped_v_bytes = None
         
         if wrapped_v_key:
-            # Puede venir en 3 formatos:
-            # 1. Bytes puros (desde vault_access ya decodificado)
-            # 2. Hex con prefijo \\x (desde columna bytea de users)
-            # 3. Base64 (desde columna bytea de users)
             if isinstance(wrapped_v_key, bytes):
-                # Ya es bytes, perfecto
                 wrapped_v_bytes = wrapped_v_key
             elif isinstance(wrapped_v_key, str):
                 if wrapped_v_key.startswith('\\x'):
                     try:
-                        # Postgres bytea may be hex: \\xdeadbeef
                         hex_str = wrapped_v_key[2:]
                         wrapped_v_bytes = bytes.fromhex(hex_str)
                     except Exception:
                         try:
-                            # Or it might be hex containing B64: \\x(B64_IN_HEX)
                             ascii_b64 = bytes.fromhex(wrapped_v_key[2:]).decode('ascii')
                             wrapped_v_bytes = base64.b64decode(ascii_b64)
                         except Exception as e:
                             self.logger.error(f"Error decoding wrapped_vault_key bytea: {e}")
-                            wrapped_v_bytes = None
                 else:
-                    # Generic string format
                     try: wrapped_v_bytes = base64.b64decode(wrapped_v_key)
                     except:
                         try: wrapped_v_bytes = bytes.fromhex(wrapped_v_key)
@@ -269,8 +226,6 @@ class UserManager:
             else:
                 wrapped_v_bytes = wrapped_v_key
         
-        # [PRESERVACIÓN CRÍTICA] Si la nube no mandó wrapped_vault_key, mantenemos la local
-        # [HEALING] Si la sesión está rota, NO preservamos la local si hay una esperanza en la nube.
         if not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
             if not session_is_broken:
                 wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
@@ -278,109 +233,109 @@ class UserManager:
             else:
                 self.logger.warning("Session broken: Skipping preservation of corrupt local vault key.")
 
-        # [DOUBLE-BUFFERED SYNC] Logic to prevent stale cloud keys from overwriting local resets
-        # 1. Always stage cloud credentials in vault_access if different or new
+        # Staging en vault_access
         if wrapped_v_bytes and cloud_profile.get("vault_id"):
-            # [OPTIMIZATION] Solo hacer staging si la clave es diferente a la local
-            # Comparamos con vault_access (que es la fuente de verdad para metadatos de llaves)
             vault_acc = self.sm.users.get_vault_access(cloud_profile.get("vault_id"))
             local_wrapped = self.sm._ensure_bytes(vault_acc.get("wrapped_master_key")) if vault_acc else None
             
             if wrapped_v_bytes != local_wrapped:
                 self.logger.info(f"[Sync] Staging UPDATED vault key for {cloud_profile.get('vault_id')} in vault_access table.")
                 self.sm.users.save_vault_access(cloud_profile.get("vault_id"), wrapped_v_bytes)
-            else:
-                self.logger.debug(f"[Sync] Vault key unchanged for {cloud_profile.get('vault_id')}, skipping staging")
 
-        # 2. DECISION: Do we trust the local primary credentials?
-        # If we have a local key/salt pair, we keep them in the 'users' table (Primary).
-        # This allows local resets to work immediately. set_active_user will handle fallbacks.
-        if not session_is_broken and local_profile and local_profile.get("wrapped_vault_key") and local_profile.get("vault_salt"):
-            local_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
-            local_s_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
-            
-            if wrapped_v_bytes and local_v_bytes != wrapped_v_bytes:
-                self.logger.info("Preserving local Primary Vault Key (Cloud key staged in vault_access).")
-                wrapped_v_bytes = local_v_bytes
-                vault_salt_bytes = local_s_bytes # Salt must match the key
-        elif session_is_broken:
-            self.logger.info("Healing: Trusting Cloud Vault Key/Salt (Bypassing primary preservation).")
-        elif not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
-            wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
-            vault_salt_bytes = self.sm._ensure_bytes(local_profile.get("vault_salt"))
-            self.logger.info("Preserving local Vault Key (Cloud sent nothing).")
-            
-        # 4. Manejar TOTP Secret - [DESCIFRADO ROBUSTO CON SYSTEM KEY]
+        return wrapped_v_bytes
+
+    def _process_totp_secret(self, cloud_profile, local_profile, username_clean):
+        """Descifra y normaliza el secreto TOTP."""
         totp_raw = cloud_profile.get("totp_secret")
         totp_clean = None
         
         if totp_raw:
-            # 1. Normalización de formato hexadecimal (PostgREST bytea)
+            # Normalización bytea
             if isinstance(totp_raw, str) and totp_raw.startswith("\\x"):
                 try:
                     totp_bytes = bytes.fromhex(totp_raw[2:])
-                    # Intentar ver si es texto plano (Base32) o binario cifrado
                     try:
                         candidate = totp_bytes.decode('utf-8')
                         if 16 <= len(candidate.strip()) <= 64 and re.fullmatch(r'[A-Z2-7]+=*', candidate.upper().strip()):
                             totp_raw = candidate.strip()
                         else:
-                            # Es binario cifrado, lo pasamos a Base64 para el siguiente bloque
                             totp_raw = base64.b64encode(totp_bytes).decode('ascii')
                     except:
-                        # Error de decodificación -> es binario cifrado
                         totp_raw = base64.b64encode(totp_bytes).decode('ascii')
                 except Exception as e:
-                    logger.debug(f"Could not process TOTP bytes: {e}")
+                    self.logger.debug(f"Could not process TOTP bytes: {e}")
 
-            # 2. Detectar si el secreto está en texto plano o cifrado
+            # Detección de texto plano vs cifrado
             is_plaintext = False
             if isinstance(totp_raw, str):
-                # Limpieza agresiva de espacios y saltos de línea
                 totp_raw = totp_raw.strip()
                 target = totp_raw.upper().replace(" ", "")
-                # Si parece Base32 puro, está en texto plano
                 if re.fullmatch(r'[A-Z2-7]+=*', target) and 16 <= len(target) <= 64:
                     is_plaintext = True
-                    totp_raw = target # Normalizar a mayúsculas sin espacios
+                    totp_raw = target
             
             if is_plaintext:
-                # Usar directamente
                 totp_clean = totp_raw
             else:
-                # Intentar descifrar con System Key
                 try:
-                    from config.config import TOTP_SYSTEM_KEY
+                    from src.infrastructure.config.config import TOTP_SYSTEM_KEY
                     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
                     import hashlib
-                    
                     key = hashlib.sha256(TOTP_SYSTEM_KEY.encode()).digest()
                     cipher = AESGCM(key)
-                    
                     payload = base64.b64decode(totp_raw)
                     nonce = payload[:12]
                     ciphertext = payload[12:]
-                    
                     decrypted = cipher.decrypt(nonce, ciphertext, None)
                     totp_clean = decrypted.decode('utf-8')
                 except Exception as decrypt_err:
-                    # Si falla, usar como texto plano (compatibilidad con datos viejos)
-                    self.logger.debug(f"TOTP Decrypt: Using raw value or discarding: {decrypt_err}")
+                    self.logger.debug(f"TOTP Decrypt: {decrypt_err}")
                     totp_clean = totp_raw if is_plaintext else None
+
+        # Blindaje Senior
+        if local_profile and not totp_clean:
+            totp_clean = local_profile.get("totp_secret")
+            
+        return totp_clean
+
+    def sync_user_to_local(self, username, cloud_profile):
+        """Persiste el perfil de usuario de la nube al almacenamiento SQLite local."""
+        if not username:
+            self.logger.warning("Aborting sync: username is None")
+            return False
+            
+        username_clean = username.upper().replace(" ", "")
+        if not self.sm: return False
+
+        # 1. Asegurar Contexto de DB
+        if not self._ensure_db_context(username_clean):
+            return False
         
-        # --- [BLINDAJE DE SEGURIDAD SENIOR] ---
-        # Si la nube no tiene el token (común tras un reset) pero nosotros sí,
-        # lo preservamos a toda costa para no dejar al usuario bloqueado.
-        local_prof = self.sm.get_local_user_profile(username_clean)
-        if local_prof and not totp_clean:
-            totp_clean = local_prof.get("totp_secret")
+        # 2. Obtener perfil local para preservación
+        local_profile = self.sm.get_local_user_profile(username_clean)
+        session_is_broken = (self.sm.session.current_user == username_clean and self.sm.vault_key is None)
+        if session_is_broken:
+             self.logger.info(f"Healing Mode: Local broken session detected for {username_clean}.")
 
-        # [DEBUG] Logging antes de guardar
-        self.logger.debug(f"Saving profile for {username_clean}:")
-        self.logger.debug(f"    protected_key: {type(protected_key_bytes).__name__} ({len(protected_key_bytes) if protected_key_bytes else 0} bytes)")
-        self.logger.debug(f"    wrapped_vault_key: {type(wrapped_v_bytes).__name__} ({len(wrapped_v_bytes) if wrapped_v_bytes else 0} bytes)")
-        self.logger.debug(f"    vault_salt: {type(vault_salt_bytes).__name__} ({len(vault_salt_bytes) if vault_salt_bytes else 0} bytes)")
+        # 3. Procesar Componentes
+        vault_salt_bytes = self._process_vault_salt(cloud_profile, local_profile, username_clean)
+        protected_key_bytes = self._process_protected_key(cloud_profile, local_profile, session_is_broken)
+        wrapped_v_bytes = self._process_wrapped_vault_key(cloud_profile, local_profile, session_is_broken)
+        totp_clean = self._process_totp_secret(cloud_profile, local_profile, username_clean)
 
+        # 4. Lógica de Redundancia Primaria vs Staging
+        if not session_is_broken and local_profile and local_profile.get("wrapped_vault_key") and local_profile.get("vault_salt"):
+            local_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
+            local_s_bytes = self.sm._ensure_bytes(local_profile["vault_salt"])
+            if wrapped_v_bytes and local_v_bytes != wrapped_v_bytes:
+                self.logger.info("Preserving local Primary Vault Key (Cloud key staged).")
+                wrapped_v_bytes = local_v_bytes
+                vault_salt_bytes = local_s_bytes
+        elif not wrapped_v_bytes and local_profile and local_profile.get("wrapped_vault_key"):
+            wrapped_v_bytes = self.sm._ensure_bytes(local_profile["wrapped_vault_key"])
+            vault_salt_bytes = self.sm._ensure_bytes(local_profile.get("vault_salt"))
+
+        # 5. Persistencia Final
         self.sm.save_local_user_profile(
             username_clean,
             cloud_profile.get("password_hash"),
@@ -388,13 +343,15 @@ class UserManager:
             vault_salt_bytes,
             cloud_profile.get("role", "user"),
             protected_key_bytes,
-            totp_clean, # Usamos el secreto limpio
+            totp_clean,
             cloud_profile.get("vault_id"),
             wrapped_v_bytes,
             user_id=cloud_profile.get("id")
         )
         self.sm.conn.commit()
         return vault_salt_bytes
+
+
 
     @rate_limit(max_attempts=5, window=60)
     def check_local_login(self, username, password):
@@ -428,115 +385,112 @@ class UserManager:
         return {"exists": True, "active": True, "status": "error"}
 
     def verify_totp(self, secret: str, token: str) -> bool:
-            """Verificación 2FA delegando en AuthManager."""
-            return self.auth.verify_totp(secret, token)
+        """Verificación 2FA delegando en AuthManager."""
+        return self.auth.verify_totp(secret, token)
+
+    def _fetch_cloud_user_data(self, username_clean):
+        """Busca el usuario en la tabla cloud 'users'."""
+        try:
+            response = self.supabase.table("users").select("*").ilike("username", username_clean).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            self.logger.error(f"Error fetching cloud user data: {e}")
+            return None
+
+    def _fetch_vault_access_key(self, user_id, vault_id, username_clean):
+        """Recupera la llave de equipo desde la tabla 'vault_access'."""
+        try:
+            if not user_id or not vault_id: return None
+            va_res = self.supabase.table("vault_access").select("wrapped_master_key").eq("user_id", user_id).eq("vault_id", vault_id).execute()
+            if va_res.data:
+                wmk_raw = va_res.data[0].get("wrapped_master_key")
+                if wmk_raw:
+                    return bytes.fromhex(wmk_raw) if isinstance(wmk_raw, str) else wmk_raw
+            return None
+        except Exception as ve:
+            self.logger.warning(f"Could not fetch vault_access for {username_clean}: {ve}")
+            return None
+
+    def _handle_hwid_binding(self, user_data, username_clean):
+        """Gestiona la vinculación de hardware (HWID) y valida la identidad física."""
+        current_hwid = get_hwid()
+        stored_hwid = user_data.get("linked_hwid")
+
+        if not stored_hwid:
+            self.logger.info(f"[HWID Bind] Vinculando cuenta {username_clean} a este dispositivo...")
+            try:
+                self.supabase.table("users").update({"linked_hwid": current_hwid}).eq("username", username_clean).execute()
+                return True # Vinculación exitosa
+            except Exception as e:
+                self.logger.error(f"No se pudo vincular hardware: {e}")
+                return True # Permitimos continuar a pesar del error de bind (resiliencia)
+
+        if stored_hwid != current_hwid:
+            self.logger.warning(f"[ACCESO DENEGADO] HWID Mismatch for {username_clean}: {current_hwid}")
+            return False # Dispositivo no autorizado
+            
+        return True # HWID válido
+
+    def _fetch_vault_name(self, vault_id):
+        """Recupera el nombre de la bóveda para sincronización de instancia."""
+        try:
+            if not vault_id: return None
+            v_res = self.supabase.table("vaults").select("name").eq("id", vault_id).execute()
+            if v_res.data:
+                vault_name = v_res.data[0].get("name")
+                if self.sm:
+                    self.sm.set_meta("instance_name", vault_name)
+                    self.logger.info(f"Vault name synchronized: {vault_name}")
+                return vault_name
+            return None
+        except Exception as ve:
+            self.logger.warning(f"Could not fetch vault name for {vault_id}: {ve}")
+            return None
                 
     def validate_user_access(self, username: str):
-        """
-        Consulta en Supabase si el usuario existe y está activo.
-        
-        Realiza una validación completa que incluye:
-        1. Verificación de existencia y estado activo.
-        2. Vinculación de Hardware (HWID Binding).
-        3. Recuperación de la Vault Key empaquetada (Wrapped Team Key).
-        4. Sincronización del nombre de la instancia.
-        
-        Args:
-            username: Nombre de usuario (será normalizado a uppercase).
-            
-        Returns:
-            dict: Perfil del usuario con llaves y metadatos, o None si hay error fatal.
-        """
+        """Consulta en Supabase si el usuario existe y está activo."""
         username_clean = username.upper().replace(" ", "")
         try:
-            # Consultamos la tabla public.users (Case-Insensitive)
-            response = self.supabase.table("users").select("*").ilike("username", username_clean).execute()
-            
-            if response.data and len(response.data) > 0:
-                user_data = response.data[0]
-                
-                # [FIX CRITICAL] Fetch Wrapped Vault Key from 'vault_access'
-                # This is essential for local persistence of the Team Key.
-                wrapped_vault_key = None
-                try:
-                    v_id = user_data.get("vault_id")
-                    u_id = user_data.get("id")
-                    if v_id and u_id:
-                        va_res = self.supabase.table("vault_access").select("wrapped_master_key").eq("user_id", u_id).eq("vault_id", v_id).execute()
-                        if va_res.data:
-                            wmk_raw = va_res.data[0].get("wrapped_master_key")
-                            # vault_access guarda la llave como HEX puro (no Base64)
-                            if wmk_raw:
-                                if isinstance(wmk_raw, str):
-                                    # Es hex puro (120 chars = 60 bytes)
-                                    wrapped_vault_key = bytes.fromhex(wmk_raw)
-                                else:
-                                    wrapped_vault_key = wmk_raw
-                            self.logger.info(f"[Auth] Found Team Key in vault_access for {username_clean}")
-                except Exception as ve:
-                    self.logger.warning(f"Could not fetch vault_access: {ve}")
+            # 1. Recuperar datos básicos
+            user_data = self._fetch_cloud_user_data(username_clean)
+            if not user_data:
+                return {"exists": False, "active": False, "role": None}
 
-                # --- [SEGURIDAD DE HARDWARE (HWID)] ---
-                current_hwid = get_hwid()
-                stored_hwid = user_data.get("linked_hwid")
+            # 2. Recuperar Llave de Equipo (Capa de Acceso)
+            wrapped_vault_key = self._fetch_vault_access_key(
+                user_data.get("id"), 
+                user_data.get("vault_id"), 
+                username_clean
+            )
 
-                # Escenario A: Usuario nuevo o migrado sin HWID vinculado
-                if not stored_hwid:
-                    self.logger.info(f"[HWID Bind] Vinculando cuenta {username_clean} a este dispositivo...")
-                    try:
-                        self.supabase.table("users").update({"linked_hwid": current_hwid}).eq("username", username_clean).execute()
-                        stored_hwid = current_hwid
-                    except Exception as e:
-                        self.logger.error(f"No se pudo vincular hardware: {e}")
-
-                # Escenario B: Validación de Identidad Física
-                if stored_hwid and stored_hwid != current_hwid:
-                    self.logger.warning(f"[ACCESO DENEGADO] Intento de entrada desde hardware no autorizado: {current_hwid}")
-                    return {
-                        "exists": True,
-                        "active": False,
-                        "role": "blocked",
-                        "error": "DEVICE_MISMATCH" # Flag para la UI
-                    }
-
-                # --- [SYNC NOMBRE DE BÓVEDA] ---
-                vault_name = None
-                try:
-                    v_id = user_data.get("vault_id")
-                    if v_id:
-                        # Buscamos en vaults (que usa UUID y campo 'name')
-                        v_res = self.supabase.table("vaults").select("name").eq("id", v_id).execute()
-                        if v_res.data:
-                            vault_name = v_res.data[0].get("name")
-                            # Guardar localmente para persistencia offline
-                            if self.sm:
-                                self.sm.set_meta("instance_name", vault_name)
-                                self.logger.info(f"Vault name synchronized: {vault_name}")
-                except Exception as ve:
-                    self.logger.warning(f"Could not fetch vault name: {ve}")
-
-                # --- [NORMALIZACIÓN DE DATOS PARA LOGIN] ---
-                pwd_hash_clean = self._normalize_hex(user_data.get("password_hash"))
-                salt_clean = self._normalize_hex(user_data.get("salt"))
-                
-                self.logger.info(f"[Auth] Normalized credentials for {username_clean} (Professional Sync)")
-
+            # 3. Validación de Hardware Binding
+            if not self._handle_hwid_binding(user_data, username_clean):
                 return {
-                    "id": user_data.get("id"),
                     "exists": True,
-                    "active": user_data.get("active", False),
-                    "role": user_data.get("role") or "user",
-                    "password_hash": pwd_hash_clean,
-                    "salt": salt_clean,
-                    "vault_salt": user_data.get("vault_salt"),
-                    "protected_key": user_data.get("protected_key"),
-                    "totp_secret": user_data.get("totp_secret"),
-                    "vault_id": user_data.get("vault_id"),
-                    "vault_name": vault_name,
-                    "wrapped_vault_key": wrapped_vault_key
+                    "active": False,
+                    "role": "blocked",
+                    "error": "DEVICE_MISMATCH"
                 }
-            
-            return {"exists": False, "active": False, "role": None}
+
+            # 4. Sincronización de Identidad de Bóveda (Instancia)
+            vault_name = self._fetch_vault_name(user_data.get("vault_id"))
+
+            # 5. Respuesta Normalizada
+            return {
+                "id": user_data.get("id"),
+                "exists": True,
+                "active": user_data.get("active", False),
+                "role": user_data.get("role") or "user",
+                "password_hash": self._normalize_hex(user_data.get("password_hash")),
+                "salt": self._normalize_hex(user_data.get("salt")),
+                "vault_salt": user_data.get("vault_salt"),
+                "protected_key": user_data.get("protected_key"),
+                "totp_secret": user_data.get("totp_secret"),
+                "vault_id": user_data.get("vault_id"),
+                "vault_name": vault_name,
+                "wrapped_vault_key": wrapped_vault_key
+            }
+
         except Exception as e:
             self.logger.critical(f"Error fatal validando usuario en Supabase: {e}")
             return None
@@ -657,55 +611,14 @@ class UserManager:
             payload = self._build_user_payload(username_clean, role, keys, password)
 
             # 4. Inserción en Supabase (con detección de offline)
-            try:
-                res = self.supabase.table("users").insert(payload).execute()
-                if not res.data: return False, "Error al crear perfil en la nube."
-                user_data = res.data[0]
-                is_offline = False
-            except Exception as net_err:
-                # Detectar errores de red
-                err_str = str(net_err).lower()
-                if any(x in err_str for x in ["getaddrinfo", "connection", "network", "timeout"]):
-                    self.logger.warning(f"Network unavailable, creating user offline: {net_err}")
-                    # Crear usuario localmente con ID temporal
-                    user_data = {
-                        "id": f"local_{username_clean}",  # Temporary ID
-                        "username": username_clean,
-                        "role": role,
-                        "active": True,
-                        "vault_id": keys["vault_id"],
-                        "password_hash": payload.get("password_hash"),
-                        "salt": payload.get("salt"),
-                        "vault_salt": payload.get("vault_salt"),
-                        "protected_key": payload.get("protected_key")
-                    }
-                    is_offline = True
-                else:
-                    # Otro tipo de error, no de red
-                    raise net_err
+            user_data, is_offline, err = self._perform_cloud_user_insertion(username_clean, role, payload, keys)
+            if err: return False, err
 
             # 5. Registrar acceso a bóveda y estabilizar localmente
-            if keys.get('protected'):
-                # Sincronizar acceso a bóveda localmente antes de terminar
-                if self.sm:
-                    # Guardar en local vault_access para que el usuario pueda loguearse offline de inmediato
-                    self.sm.users.save_vault_access(keys['vault_id'], keys['protected'], synced=1 if not is_offline else 0)
-                
-                # Sincronizar en la nube (solo si online)
-                if not is_offline:
-                    self._register_vault_access(user_data['id'], keys['vault_id'], keys['protected'])
-
-            # Guardar localmente con flag de sync
-            self._sync_user_to_local_with_flag(username_clean, user_data, synced=0 if is_offline else 1)
+            self._finalize_local_user_setup(username_clean, user_data, keys, is_offline)
             
-            # [FIX] Only set_active_user if this is the FIRST admin (no one is logged in)
-            # Otherwise, keep the current admin session active
-            is_first_admin = (role == "admin" and self.get_user_count() == 1)
-            if password and is_first_admin:
-                self.sm.set_active_user(username_clean, password)
-                self.logger.info(f"First admin created - session activated for {username_clean}")
-            else:
-                self.logger.info(f"Secondary user {username_clean} created - preserving current admin session")
+            # 6. Gestión de sesión
+            self._handle_post_creation_session(username_clean, role, password)
 
             if is_offline:
                 return True, f"Usuario {username_clean} creado localmente. Se sincronizará cuando haya conexión."
@@ -715,7 +628,7 @@ class UserManager:
         except Exception as e:
             # [OFFLINE DETECTION] Detectar errores de red y dar mensaje claro
             err_str = str(e).lower()
-            if "getaddrinfo" in err_str or "connection" in err_str or "network" in err_str or "timeout" in err_str:
+            if any(x in err_str for x in ["getaddrinfo", "connection", "network", "timeout"]):
                 self.logger.error(f"Network unavailable during user creation: {e}")
                 fallback_msg = MESSAGES.COMMON.ERR_OFFLINE if hasattr(MESSAGES, 'COMMON') and hasattr(MESSAGES.COMMON, 'ERR_OFFLINE') else "No hay conexión a internet."
                 return False, fallback_msg
@@ -828,6 +741,53 @@ class UserManager:
             return False, f"El usuario '{username}' ya existe."
         self.logger.error(f"Error in add_new_user: {e}")
         return False, f"Fallo de Protocolo: {err_str}"
+
+    def _perform_cloud_user_insertion(self, username_clean, role, payload, keys):
+        """Maneja la inserción en Supabase con fallback offline."""
+        try:
+            res = self.supabase.table("users").insert(payload).execute()
+            if not res.data:
+                return None, False, "Error al crear perfil en la nube."
+            return res.data[0], False, None
+        except Exception as net_err:
+            err_str = str(net_err).lower()
+            if any(x in err_str for x in ["getaddrinfo", "connection", "network", "timeout"]):
+                self.logger.warning(f"Network unavailable, creating user offline: {net_err}")
+                user_data = {
+                    "id": f"local_{username_clean}",
+                    "username": username_clean,
+                    "role": role,
+                    "active": True,
+                    "vault_id": keys["vault_id"],
+                    "password_hash": payload.get("password_hash"),
+                    "salt": payload.get("salt"),
+                    "vault_salt": payload.get("vault_salt"),
+                    "protected_key": payload.get("protected_key")
+                }
+                return user_data, True, None
+            raise net_err
+
+    def _finalize_local_user_setup(self, username_clean, user_data, keys, is_offline):
+        """Gestiona la persistencia local y el registro de acceso a la bóveda."""
+        if keys.get('protected'):
+            if self.sm:
+                # Guardar en local vault_access para que el usuario pueda loguearse offline de inmediato
+                self.sm.users.save_vault_access(keys['vault_id'], keys['protected'], synced=1 if not is_offline else 0)
+            if not is_offline:
+                # Sincronizar en la nube (solo si online)
+                self._register_vault_access(user_data['id'], keys['vault_id'], keys['protected'])
+        
+        # Guardar localmente con flag de sync
+        self._sync_user_to_local_with_flag(username_clean, user_data, synced=0 if is_offline else 1)
+
+    def _handle_post_creation_session(self, username_clean, role, password):
+        """Activa la sesión si es el primer admin, o preserva la actual."""
+        is_first_admin = (role == "admin" and self.get_user_count() == 1)
+        if password and is_first_admin:
+            self.sm.set_active_user(username_clean, password)
+            self.logger.info(f"First admin created - session activated for {username_clean}")
+        else:
+            self.logger.info(f"Secondary user {username_clean} created - preserving current admin session")
 
     def get_master_vault_id(self):
         """

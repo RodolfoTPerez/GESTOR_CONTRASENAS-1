@@ -56,8 +56,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# [NEW] Global RateLimiter instance
+# [NEW] Global RateLimiter instance and registry
 auth_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+_limiters = [auth_limiter]
 
 def rate_limit(max_attempts=5, window=60):
     """
@@ -65,6 +66,7 @@ def rate_limit(max_attempts=5, window=60):
     Usa el nombre de la función como clave para evitar bypass mediante variación de parámetros.
     """
     limiter = RateLimiter(max_attempts=max_attempts, window_seconds=window)
+    _limiters.append(limiter)
     
     def decorator(func):
         @wraps(func)
@@ -91,8 +93,10 @@ def rate_limit(max_attempts=5, window=60):
     return decorator
 
 def reset_rate_limits():
-    """Limpia el historial de intentos."""
-    auth_limiter.attempts.clear()
+    """Limpia el historial de intentos en todos los limitadores registrados."""
+    for l in _limiters:
+        with l.lock:
+            l.attempts.clear()
 
 
 class CryptoEngine:

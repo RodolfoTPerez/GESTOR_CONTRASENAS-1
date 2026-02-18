@@ -1,3 +1,4 @@
+import logging
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QTextEdit, QFrame, QApplication, QShortcut
@@ -6,6 +7,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QKeySequence
 from src.domain.messages import MESSAGES
 from src.presentation.theme_manager import ThemeManager
+
+logger = logging.getLogger(__name__)
 
 class IntelligenceDialog(QDialog):
     def __init__(self, report, ai_engine, parent=None):
@@ -123,31 +126,36 @@ class IntelligenceDialog(QDialog):
         try:
             sb = self.content_text.verticalScrollBar()
             sb.setValue(sb.minimum())
-        except: pass
+        except Exception as e:
+            logger.debug(f"Scrollbar reset failed: {e}")
 
     def _scroll_up(self):
         try:
             sb = self.content_text.verticalScrollBar()
             sb.setValue(max(sb.value() - sb.pageStep(), sb.minimum()))
-        except: pass
+        except Exception as e:
+            logger.debug(f"Scroll up failed: {e}")
 
     def _scroll_down(self):
         try:
             sb = self.content_text.verticalScrollBar()
             sb.setValue(min(sb.value() + sb.pageStep(), sb.maximum()))
-        except: pass
+        except Exception as e:
+            logger.debug(f"Scroll down failed: {e}")
 
     def _scroll_top(self):
         try:
             sb = self.content_text.verticalScrollBar()
             sb.setValue(sb.minimum())
-        except: pass
+        except Exception as e:
+            logger.debug(f"Scroll top failed: {e}")
 
     def _scroll_bottom(self):
         try:
             sb = self.content_text.verticalScrollBar()
             sb.setValue(sb.maximum())
-        except: pass
+        except Exception as e:
+            logger.debug(f"Scroll bottom failed: {e}")
 
     def _on_geminis_click(self):
         ai = self.ai_engine
@@ -169,7 +177,8 @@ class IntelligenceDialog(QDialog):
 
         try:
             safe_report = ai.sanitize_report_for_ai(self.report)
-        except:
+        except Exception as e:
+            logger.debug(f"AI report sanitization failed: {e}")
             safe_report = self.report
 
         if engine == "Gemini":

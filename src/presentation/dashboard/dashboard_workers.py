@@ -33,7 +33,8 @@ class ConnectivityWorker(QThread):
             sqlite = "SQLite: 🟢 Online"
             try:
                 self.sm.conn.execute("SELECT 1")
-            except:
+            except Exception as e:
+                logger.debug(f"SQLite check failed: {e}")
                 sqlite = "SQLite: 🔴 Error"
 
             sync_err = getattr(self.sync_manager, "last_sync_error", None)
@@ -122,7 +123,8 @@ class HeuristicWorker(QThread):
                 for u in users:
                     if u.get("role", "").lower() == "admin" and not u.get("totp_secret"):
                         admin_no_mfa += 1
-            except: pass
+            except Exception as e:
+                logger.debug(f"MFA/Admin check failed: {e}")
             
             penalty_mfa = 20 if admin_no_mfa > 0 else 0
             
@@ -139,7 +141,8 @@ class HeuristicWorker(QThread):
                 if fails:
                     last_ts = fails[0].get("timestamp", 0)
                     last_suspicious = QDateTime.fromSecsSinceEpoch(last_ts).toString("hh:mm AP")
-            except: pass
+            except Exception as e:
+                logger.debug(f"Audit log pattern analysis failed: {e}")
             
             penalty_spike = 10 if failed_spike else 0
             

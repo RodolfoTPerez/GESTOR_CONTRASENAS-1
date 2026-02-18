@@ -29,11 +29,24 @@ class VaultIdentityBanner(QWidget):
         layout.setContentsMargins(15, 10, 15, 10)
         layout.setSpacing(5)
 
-        # 1. ICON + TITLE ROW
+        # 1. ICON + TITLE ROW (Dynamic Logo Support)
         header_row = QHBoxLayout()
-        self.lbl_v_icon = QLabel("🛡️")
+        self.lbl_v_icon = QLabel()
         self.lbl_v_icon.setObjectName("hud_v_icon")
-        self.lbl_v_icon.setStyleSheet("font-size: 20px;")
+        
+        from src.infrastructure.config.path_manager import PathManager
+        from PyQt5.QtGui import QPixmap
+        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        
+        actual_logo = custom_logo if custom_logo.exists() else default_logo
+        if actual_logo.exists():
+            # A bit smaller for the HUD banner
+            pix = QPixmap(str(actual_logo)).scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.lbl_v_icon.setPixmap(pix)
+        else:
+            self.lbl_v_icon.setText("🛡️")
+            self.lbl_v_icon.setStyleSheet("font-size: 20px;")
         
         self.lbl_v_name = QLabel(vault_name.upper())
         self.lbl_v_name.setObjectName("hud_v_name")

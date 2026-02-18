@@ -101,6 +101,18 @@ def start_app():
     _setup_environment()
     app = QApplication(sys.argv)
     
+    # [ULTRA-EARLY DARK FIX]
+    # Configure global attributes FIRST
+    from PyQt5.QtGui import QPalette, QColor
+    palette = app.palette()
+    palette.setColor(QPalette.Window, QColor("#050505"))
+    palette.setColor(QPalette.Base, QColor("#050505"))
+    palette.setColor(QPalette.Text, QColor("#e2e8f0"))
+    app.setPalette(palette)
+    
+    # Force a global dark base state via SS
+    app.setStyleSheet("QWidget { background-color: #050505; color: #e2e8f0; }")
+    
     from src.presentation.theme_manager import ThemeManager
     tm = ThemeManager()
     
@@ -149,9 +161,12 @@ def _handle_login_success(app, sm, um, master_password, user_profile):
         dashboard = DashboardView(sm, sync, um, user_profile)
         app.dashboard = dashboard
         
+        # [Zero Flash Transition] Ensure everything is dark before showing
         dashboard.show()
         dashboard.raise_()
         dashboard.activateWindow()
+        QApplication.processEvents() # Clear buffers
+        
         logger.info(f"Sesión iniciada correctamente para {username}")
     except Exception as e:
         _handle_critical_error(e, user_profile)

@@ -2,9 +2,12 @@ import secrets
 import string
 import logging
 from PyQt5.QtWidgets import (
-    QApplication, QInputDialog, QLineEdit, QDialog, QLabel
+    QApplication, QInputDialog, QLineEdit, QDialog, QLabel, QFileDialog
 )
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap
+from pathlib import Path
+from src.infrastructure.config.path_manager import PathManager
 from src.domain.messages import MESSAGES
 from src.presentation.ui_utils import PremiumMessage
 from src.presentation.notifications.notification_manager import Notifications
@@ -95,7 +98,130 @@ class DashboardActions(DashboardVaultActions, DashboardSyncActions, DashboardIOA
                     if lbl: svc_name = lbl.text()
             self.sm.log_event("VER", svc_name, details="👁️ Visualización en Dashboard")
             if hasattr(self, '_load_table_audit'): self._load_table_audit()
-        except: pass
+        except Exception as e:
+            logger.debug(f"Audit log event for dashboard view failed: {e}")
+
+    def _on_change_company_name(self):
+        """
+        [ENTERPRISE SYNC]
+        Actualiza el nombre de la compañía al presionar ENTER.
+        Sincroniza con SQLite, Supabase y QSettings con feedback al usuario.
+        """
+        if not hasattr(self, 'txt_company_name'): return
+        
+        new_name = self.txt_company_name.text().strip().upper()
+        if not new_name:
+            new_name = "IT SECURITY"
+            self.txt_company_name.setText(new_name)
+
+        try:
+            # 1. Guardar en SQLite (Local DB)
+            if hasattr(self, 'sm') and self.sm:
+                self.sm.set_meta("instance_name", new_name)
+                
+                # 2. Sincronizar con Supabase (Cloud)
+                from src.infrastructure.user_manager import UserManager
+                um = UserManager(self.sm)
+                
+                v_id = self.sm.session.current_vault_id
+                if v_id:
+                    import threading
+                    threading.Thread(target=um.sync_vault_name, args=(v_id, new_name), daemon=True).start()
+
+            # 3. Guardar en QSettings (Compatibilidad y Login Screen)
+            from PyQt5.QtCore import QSettings
+            from src.presentation.theme_manager import ThemeManager
+            settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+            settings.setValue("company_name", new_name)
+
+            # 4. Actualizar HUD Principal inmediatamente
+            if hasattr(self, 'lbl_v_name'):
+                self.lbl_v_name.setText(new_name)
+            
+            # 5. Notificar Éxito
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.success(self, MESSAGES.SETTINGS.TITLE_SAVED, f"Nombre de compañía actualizado a '{new_name}'. Los cambios se han sincronizado con la nube.")
+                
+        except Exception as e:
+            logger.error(f"Error guardando nombre de compañía: {e}")
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.error(self, "Error de Guardado", "No se pudo actualizar el nombre en la base de datos.")
+
+    def _on_change_logo(self):
+        """
+        Permite al usuario subir un logo corporativo (Raster o Vectorial .SVG).
+        Aplica renderizado de alta calidad para archivos vectoriales.
+        """
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 
+            MESSAGES.SETTINGS.BTN_CHANGE_LOGO, 
+            "", 
+            "Imágenes (*.png *.jpg *.jpeg *.bmp *.svg)"
+        )
+        
+        if not file_path:
+            return
+
+        try:
+            from PyQt5.QtGui import QPixmap, QImage, QPainter
+            from PyQt5.QtCore import Qt, QSize
+            
+            # Detectar si es SVG
+            if file_path.lower().endswith(".svg"):
+                from PyQt5.QtSvg import QSvgRenderer
+                renderer = QSvgRenderer(file_path)
+                if not renderer.isValid():
+                    from src.presentation.ui_utils import PremiumMessage
+                    PremiumMessage.error(self, "Error SVG", "El archivo SVG no es válido o está corrupto.")
+                    return
+                
+                # Renderizar SVG a un QImage de alta resolución (512x512)
+                # Esto garantiza nitidez extrema independientemente del archivo fuente
+                img = QImage(QSize(512, 512), QImage.Format_ARGB32)
+                img.fill(Qt.transparent)
+                
+                painter = QPainter(img)
+                renderer.render(painter)
+                painter.end()
+                
+                pix = QPixmap.fromImage(img)
+            else:
+                pix = QPixmap(file_path)
+
+            if pix.isNull():
+                from src.presentation.ui_utils import PremiumMessage
+                PremiumMessage.error(self, "Error de Imagen", "El archivo seleccionado no es una imagen válida.")
+                return
+
+            # Destino persistente
+            custom_logo_path = PathManager.DATA_DIR / "custom_logo.png"
+            
+            # 2. Guardar a disco (Normalizado a PNG)
+            save_pix = pix.scaled(512, 512, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            save_pix.save(str(custom_logo_path), "PNG")
+
+            # 3. Actualizar Preview en Settings
+            if hasattr(self, 'lbl_logo_preview'):
+                preview_pix = save_pix.scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.lbl_logo_preview.setPixmap(preview_pix)
+
+            # 3c. Actualizar Logo en Header Principal
+            if hasattr(self, 'lbl_v_icon'):
+                header_pix = save_pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self.lbl_v_icon.setPixmap(header_pix)
+
+            # 4. Notificar éxito
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.success(self, MESSAGES.SETTINGS.TITLE_SAVED, "Logo corporativo actualizado con éxito (Soporte Vectorial Activo).")
+            
+            # Auditoría
+            if hasattr(self, 'sm') and self.sm:
+                self.sm.log_event("REBRANDING", "LOGO_UPDATE", details=f"Nuevo logo establecido desde {Path(file_path).name}")
+
+        except Exception as e:
+            logger.error(f"Error actualizando el logo: {e}")
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.error(self, "Error de Sistema", f"No se pudo procesar el logo: {str(e)}")
 
     def _verify_action_2fa(self, action_name):
         secret = self.user_profile.get("totp_secret")

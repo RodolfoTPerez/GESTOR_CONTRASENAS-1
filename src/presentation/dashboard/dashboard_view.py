@@ -27,17 +27,32 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
     
     def __init__(self, sm, sync_manager, user_manager, user_profile, parent=None):
         super().__init__(parent)
+        
+        # [ESTRATEGIA TOTAL DARKNESS]
+        # 1. Congelar pintura antes de que el SO vea nada
+        self.setUpdatesEnabled(False)
+        self.setWindowOpacity(0.0)
+        
+        # 2. Atributos de prohibición de fondo blanco
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        
+        # 3. Forzar Modo Oscuro Inmersivo en Windows (Hardware Level)
+        try:
+            from ctypes import windll, c_int, byref, sizeof
+            HWND = int(self.winId())
+            # Atributo 20 = DWMWA_USE_IMMERSIVE_DARK_MODE para Windows 10+
+            windll.dwmapi.DwmSetWindowAttribute(HWND, 20, byref(c_int(1)), sizeof(c_int(1)))
+        except Exception: pass
+
         self.sm = sm
         self.sync_manager = sync_manager
         self.user_manager = user_manager
         self.user_profile = user_profile
         self.current_username = user_profile.get("username", "Unknown")
         self.current_role = user_profile.get("role") or "user"
-        self.user_role = self.current_role  # Alias para compatibilidad
-        self.sm.user_role = self.current_role.lower() # Sincronizar con motor de seguridad
-
-        # Prevenir múltiples ejecuciones de atajos
-        self._shortcut_active = False
+        self.user_role = self.current_role
+        self.sm.user_role = self.current_role.lower()
 
         from src.infrastructure.config.path_manager import PathManager
         self.settings = QSettings(ThemeManager.APP_ID, f"VultraxCore_{self.current_username}")
@@ -56,6 +71,12 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         self.theme_manager.theme_changed.connect(lambda: self.theme_manager.apply_app_theme(QApplication.instance()))
         self.theme_manager.theme_changed.connect(self._refresh_all_widget_themes)
         self.theme_manager.set_theme(saved_theme)
+        
+        # Forzar color de fondo inmediato antes de construir UI
+        colors = self.theme_manager.get_theme_colors()
+        bg_color = colors.get('bg', '#050505')
+        self.setStyleSheet(f"QWidget {{ background-color: {bg_color}; }}")
+        
         self.theme_manager.apply_app_theme(QApplication.instance())
         self._refresh_all_widget_themes()
         
@@ -99,6 +120,13 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             
             # Conexión Robusta a cambios de timeout
             self.watcher.timeout_changed.connect(self._on_timeout_duration_changed)
+
+        # [REVEAL DASHBOARD] 
+        # Forzamos una pintura final en la sombra antes de revelar
+        QApplication.processEvents()
+        self.setUpdatesEnabled(True)
+        # Delay estratégico de 200ms para asegurar que el hardware asiente el color oscuro
+        QTimer.singleShot(200, lambda: self.setWindowOpacity(1.0))
     
         # --- Hilo de conectividad ---
         self.conn_worker = ConnectivityWorker(self.sync_manager, self.sm)
@@ -133,7 +161,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
 
         # [NET CODE] Enforce removal of global filters if they persisted
         try: QApplication.instance().removeEventFilter(self)
-        except: pass
+        except Exception as e:
+            logger.debug(f"Failed to remove dashboard event filter: {e}")
 
     def _on_timeout_duration_changed(self, ms):
         """Sincronización LIVE: Reacciona al cambio de ajustes instantáneamente."""
@@ -353,6 +382,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         if hasattr(self, 'btn_save_settings'): self.btn_save_settings.clicked.connect(self._save_settings_from_ui)
         if hasattr(self, 'btn_change_pwd_real'): self.btn_change_pwd_real.clicked.connect(self._on_change_password)
         if hasattr(self, 'btn_repair_vault_dashboard'): self.btn_repair_vault_dashboard.clicked.connect(self._on_repair_vault_dashboard)
+        if hasattr(self, 'btn_change_logo'): self.btn_change_logo.clicked.connect(self._on_change_logo)
+        if hasattr(self, 'txt_company_name'): self.txt_company_name.returnPressed.connect(self._on_change_company_name)
         
         # [SIGNAL-BASED INTERACTION] No more eventFilters
         # if hasattr(self, 'ai_radar'): self.ai_radar.installEventFilter(self)
@@ -442,7 +473,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                 try:
                     size_mb = os.path.getsize(self.sm.db_path) / (1024 * 1024)
                     self.unit_storage.set_value(f"{size_mb:.2f} MB 📊", color_name="info")
-                except: pass
+                except Exception as e:
+                    logger.debug(f"Failed to get database size for storage unit: {e}")
             
             # 2b. HEALTH REACTOR (Radial Gauge) UPDATE
             if hasattr(self, 'health_reactor'):
@@ -525,7 +557,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                     try:
                         size_mb = os.path.getsize(self.sm.db_path) / (1024 * 1024)
                         self.unit_load.set_value(f"{size_mb:.2f} MB", percent=min(100, int(size_mb * 5)), color_name="info")
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"Failed to get database size for load unit: {e}")
                 
                 if hasattr(self, 'unit_active_risks'):
                     total_risk = stats.get("weak_count", 0) + stats.get("reused_count", 0)
@@ -581,7 +614,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                     sessions = self.sync_manager.get_active_sessions() or []
                     active_count = sum(1 for s in sessions if (time.time() - (s.get("last_seen", 0))) < 300 and not s.get("is_revoked"))
                     self.unit_auth_sessions.set_value(f"{max(1, active_count)} ACTIVE ⚡", color_name="success")
-                except: pass
+                except Exception as e:
+                    logger.debug(f"Failed to fetch active sessions for dashboard: {e}")
 
             if hasattr(self, 'unit_auth_policy'):
                 self.unit_auth_policy.set_value("BUSINESS STD 🏢", color_name="info")
@@ -1288,7 +1322,8 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         # 3. Feedback Sonoro (Windows Beep táctico)
         try:
             winsound.Beep(1000, 150) # Tono agudo y corto
-        except: pass
+        except Exception as e:
+            logger.debug(f"Voice search beep failed: {e}")
         
         self.btn_voice_search.setProperty("listening", "true")
         self.btn_voice_search.style().unpolish(self.btn_voice_search)
@@ -1332,13 +1367,15 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             if hasattr(self, "conn_worker"): self.conn_worker.stop()
             if hasattr(self, "heuristic_worker"): self.heuristic_worker.running = False
             if hasattr(self, "voice_worker"): self.voice_worker.terminate() # Force stop audio
-        except: pass
+        except Exception as e:
+            logger.debug(f"Worker termination during close failed: {e}")
 
         # Notificar Logout Remoto (Heartbeat Final)
         try:
             if hasattr(self, 'sync_manager'):
                 self.sync_manager.send_heartbeat(action="LOGOUT", status="OFFLINE")
-        except: pass
+        except Exception as e:
+            logger.debug(f"Final logout heartbeat failed: {e}")
         
         logger.info("Vault closed correctly.")
         event.accept()

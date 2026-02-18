@@ -99,7 +99,8 @@ class GlobalInactivityWatcher(QObject):
                 self._last_mouse_pos = current_pos
                 logger.debug("Activity Detected (Polling)")
                 self.reset_timer()
-        except: pass
+        except Exception as e:
+            logger.debug(f"Mouse activity check failed: {e}")
 
     def eventFilter(self, obj, event):
         """Filtro global para Teclado, Clicks y Movimiento."""
@@ -118,8 +119,8 @@ class GlobalInactivityWatcher(QObject):
             # AGGRESSIVE TRACKING: Capture everything including movement
             if etype in (QEvent.KeyPress, QEvent.MouseMove, QEvent.MouseButtonPress, QEvent.MouseButtonDblClick, QEvent.Wheel, QEvent.TouchBegin):
                 self.reset_timer()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Event filter processing failed: {e}")
         finally:
             GlobalInactivityWatcher._filtering = False
             
@@ -132,6 +133,7 @@ class GlobalInactivityWatcher(QObject):
                 logger.debug(f"Resetting timer ({self.timeout_ms}ms)")
                 self.timer.start(self.timeout_ms)
                 try: self.activity_detected.emit()
-                except: pass
-        except:
-            pass
+                except Exception as e:
+                    logger.debug(f"Failed to emit activity_detected: {e}")
+        except Exception as e:
+            logger.debug(f"Timer reset failed: {e}")

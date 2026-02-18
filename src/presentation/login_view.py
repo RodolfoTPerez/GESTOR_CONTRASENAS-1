@@ -130,6 +130,14 @@ class LoginView(QMainWindow):
 
         self.logger = logging.getLogger(__name__)
 
+        self._init_ui()
+        self.reg_mode = False
+        self.failed_attempts = 0
+        self.locked_until = None
+        
+        # Revelar tras construcción
+        QTimer.singleShot(50, lambda: self.setWindowOpacity(1.0))
+
         # --- WINDOW SETUP ---
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -271,15 +279,20 @@ class LoginView(QMainWindow):
         # Logo dinámico
         self.logo_label = QLabel()
         self.logo_label.setAlignment(Qt.AlignCenter)
-        logo_path = str(Path(__file__).parent.parent.parent / "logo_v2.png")
-        if Path(logo_path).exists():
-            pix = QPixmap(logo_path).scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        
+        from src.infrastructure.config.path_manager import PathManager
+        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        
+        actual_logo = custom_logo if custom_logo.exists() else default_logo
+        if actual_logo.exists():
+            pix = QPixmap(str(actual_logo)).scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.logo_label.setPixmap(pix)
         else:
             self.logo_label.setText("🛡️")
             self.logo_label.setStyleSheet("font-size: 60px; color: white;")
         
-        self.app_title = QLabel("VAULT CORE")
+        self.app_title = QLabel("VULTRAX CORE")
         self.app_title.setObjectName("app_title")
         self.app_title.setAlignment(Qt.AlignCenter)
 

@@ -202,7 +202,8 @@ class SetupWizard(QDialog):
             
             # Intento opcional en vault_groups por si acaso
             try: self.um.supabase.table("vault_groups").upsert({"id": 1, "vault_name": instance_name, "vault_master_key": os.urandom(32).hex()}).execute()
-            except: pass
+            except Exception as e:
+                self.logger.debug(f"Optional vault_groups setup skipped: {e}")
         except Exception as e:
             self.logger.error(f"Wizard Error: {e}")
             # Error handling for vault creation

@@ -14,15 +14,39 @@ from src.domain.messages import MESSAGES
 class ServiceDialog(QDialog):
     def __init__(self, parent=None, title=None, record=None, secrets_manager=None, app_user="Unknown", user_role="user", settings=None, guardian_ai=None):
         super().__init__(parent)
+        
+        # [ESTRATEGIA PROFUNDA]
+        self.setUpdatesEnabled(False)
+        self.setWindowOpacity(0.0)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        
+        # Forzar dark mode en Windows a nivel DWM (Desktop Window Manager)
+        try:
+            from ctypes import windll, c_int, byref, sizeof
+            HWND = int(self.winId())
+            windll.dwmapi.DwmSetWindowAttribute(HWND, 20, byref(c_int(1)), sizeof(c_int(1)))
+        except Exception: pass
+
         self.title_text = title if title else MESSAGES.SERVICE.LBL_SERVICE
         if settings:
             self.settings = settings
         else:
-            # [SENIOR FIX] Use User Scope if known
             if app_user and app_user != "Unknown":
                 self.settings = QSettings(ThemeManager.APP_ID, f"VultraxCore_{app_user}")
             else:
                 self.settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+
+        self.theme_manager = ThemeManager()
+        user_theme = self.settings.value("theme_active", "tactical_dark")
+        self.theme_manager.set_theme(user_theme)
+        colors = self.theme_manager.get_theme_colors()
+        bg_hex = colors.get('bg', '#050505')
+        
+        # Estilo atómico de fondo
+        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex} !important; }}")
+        QApplication.processEvents()
+        
         self.secrets_manager = secrets_manager
         self.ai = guardian_ai
         self.record = record or {}
@@ -34,16 +58,10 @@ class ServiceDialog(QDialog):
         self.auto_hide_timer.setSingleShot(True)
         self.auto_hide_timer.timeout.connect(self._force_hide_password)
 
-        self.auto_hide_timer.timeout.connect(self._force_hide_password)
-
         self.setWindowTitle(self.title_text)
         self.setFixedSize(520, 720)
         
-        # Cargar estilos desde el gestor de temas (Respetando el tema del usuario)
-
         # --- ESTRATEGIA NUCLEAR: WRAPPER FRAME ---
-        # En lugar de estilizar el QDialog (que falla en Windows), estilizamos un QFrame interno
-        # que ocupa el 100% del espacio.
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -52,14 +70,10 @@ class ServiceDialog(QDialog):
         self.frame.setAttribute(Qt.WA_StyledBackground, True)
         self.main_layout.addWidget(self.frame)
         
-        self.theme_manager = ThemeManager()
-        user_theme = self.settings.value("theme_active", "tactical_dark")
-        self.theme_manager.set_theme(user_theme)
+        # Aplicar el tema completo fusionado
+        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex} !important; }}\n" + self.theme_manager.load_stylesheet("dialogs"))
         
-        # Aplicar el tema al diálogo usando el gestor
-        self.setStyleSheet(self.theme_manager.load_stylesheet("dialogs"))
-        
-        # Redirigir la construcción del UI al layout del frame
+        # Redirigir la construcción del UI
         self._init_ui(self.title_text, parent_widget=self.frame)
         
         if record:
@@ -72,6 +86,10 @@ class ServiceDialog(QDialog):
             self.edit_user.setText(app_user)
         
         self._validate_form()
+
+        # Revelación segura
+        self.setUpdatesEnabled(True)
+        QTimer.singleShot(150, lambda: self.setWindowOpacity(1.0))
 
     def _init_ui(self, title, parent_widget=None):
         target = parent_widget if parent_widget else self

@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" style="background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1729 100%)">
+  <defs>
+    <!-- Gradientes cyber -->
+    <linearGradient id="cyber1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f3ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0066ff;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="cyber2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00ff88;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00ccff;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f3ff;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#00f3ff;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- Filtros de brillo -->
+    <filter id="glow-filter">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <filter id="strong-glow">
+      <feGaussianBlur stdDeviation="15" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Grid de fondo cyber -->
+  <g opacity="0.15">
+    <path d="M0,0 L1920,0 L1920,1080 L0,1080 Z" fill="none" stroke="#00f3ff" stroke-width="1"/>
+    <g id="grid">
+      <!-- Líneas verticales -->
+      <path d="M240,0 L240,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M480,0 L480,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M720,0 L720,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M960,0 L960,1080" stroke="#00f3ff" stroke-width="1"/>
+      <path d="M1200,0 L1200,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M1440,0 L1440,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M1680,0 L1680,1080" stroke="#00f3ff" stroke-width="0.5"/>
+      
+      <!-- Líneas horizontales -->
+      <path d="M0,135 L1920,135" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M0,270 L1920,270" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M0,405 L1920,405" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M0,540 L1920,540" stroke="#00f3ff" stroke-width="1"/>
+      <path d="M0,675 L1920,675" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M0,810 L1920,810" stroke="#00f3ff" stroke-width="0.5"/>
+      <path d="M0,945 L1920,945" stroke="#00f3ff" stroke-width="0.5"/>
+    </g>
+  </g>
+
+  <!-- Círculos concéntricos centrales (escudo) -->
+  <g transform="translate(960, 540)" filter="url(#strong-glow)">
+    <circle cx="0" cy="0" r="350" fill="none" stroke="url(#cyber1)" stroke-width="3" opacity="0.4"/>
+    <circle cx="0" cy="0" r="280" fill="none" stroke="url(#cyber1)" stroke-width="2" opacity="0.5"/>
+    <circle cx="0" cy="0" r="210" fill="none" stroke="url(#cyber2)" stroke-width="4" opacity="0.6"/>
+    <circle cx="0" cy="0" r="140" fill="none" stroke="url(#cyber2)" stroke-width="3" opacity="0.7"/>
+  </g>
+
+  <!-- Hexágono principal (fortaleza) -->
+  <g transform="translate(960, 540)" filter="url(#glow-filter)">
+    <path d="M 0,-200 L 173.2,-100 L 173.2,100 L 0,200 L -173.2,100 L -173.2,-100 Z" 
+          fill="none" stroke="url(#cyber1)" stroke-width="6" opacity="0.9"/>
+    <path d="M 0,-160 L 138.6,-80 L 138.6,80 L 0,160 L -138.6,80 L -138.6,-80 Z" 
+          fill="none" stroke="url(#cyber2)" stroke-width="4" opacity="0.8"/>
+    <path d="M 0,-120 L 104,-60 L 104,60 L 0,120 L -104,60 L -104,-60 Z" 
+          fill="rgba(0,243,255,0.1)" stroke="url(#cyber2)" stroke-width="3" opacity="0.9"/>
+  </g>
+
+  <!-- Escudo central -->
+  <g transform="translate(960, 540)" filter="url(#strong-glow)">
+    <path d="M 0,-80 L 40,-60 L 40,40 L 0,80 L -40,40 L -40,-60 Z" 
+          fill="url(#cyber1)" opacity="0.6"/>
+    <path d="M 0,-70 L 35,-52 L 35,35 L 0,70 L -35,35 L -35,-52 Z" 
+          fill="rgba(10,14,39,0.8)" stroke="url(#cyber2)" stroke-width="2"/>
+    
+    <!-- Símbolo de candado -->
+    <circle cx="0" cy="0" r="25" fill="none" stroke="url(#cyber2)" stroke-width="3"/>
+    <rect x="-8" y="5" width="16" height="20" rx="2" fill="url(#cyber2)"/>
+    <path d="M -10,-5 L -10,-15 Q -10,-25 0,-25 Q 10,-25 10,-15 L 10,-5" 
+          fill="none" stroke="url(#cyber2)" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- Líneas de energía radiales -->
+  <g transform="translate(960, 540)" opacity="0.4">
+    <line x1="0" y1="0" x2="0" y2="-400" stroke="url(#cyber1)" stroke-width="2" filter="url(#glow-filter)"/>
+    <line x1="0" y1="0" x2="346" y2="-200" stroke="url(#cyber1)" stroke-width="1.5" filter="url(#glow-filter)"/>
+    <line x1="0" y1="0" x2="346" y2="200" stroke="url(#cyber1)" stroke-width="1.5" filter="url(#glow-filter)"/>
+    <line x1="0" y1="0" x2="0" y2="400" stroke="url(#cyber1)" stroke-width="2" filter="url(#glow-filter)"/>
+    <line x1="0" y1="0" x2="-346" y2="200" stroke="url(#cyber1)" stroke-width="1.5" filter="url(#glow-filter)"/>
+    <line x1="0" y1="0" x2="-346" y2="-200" stroke="url(#cyber1)" stroke-width="1.5" filter="url(#glow-filter)"/>
+  </g>
+
+  <!-- Esquinas decorativas (marcos de fortaleza) -->
+  <g stroke="url(#cyber1)" stroke-width="4" fill="none" filter="url(#glow-filter)">
+    <!-- Esquina superior izquierda -->
+    <path d="M 50,50 L 50,150 M 50,50 L 150,50" opacity="0.8"/>
+    <path d="M 30,30 L 30,170 M 30,30 L 170,30" opacity="0.5"/>
+    
+    <!-- Esquina superior derecha -->
+    <path d="M 1870,50 L 1870,150 M 1870,50 L 1770,50" opacity="0.8"/>
+    <path d="M 1890,30 L 1890,170 M 1890,30 L 1750,30" opacity="0.5"/>
+    
+    <!-- Esquina inferior izquierda -->
+    <path d="M 50,1030 L 50,930 M 50,1030 L 150,1030" opacity="0.8"/>
+    <path d="M 30,1050 L 30,910 M 30,1050 L 170,1050" opacity="0.5"/>
+    
+    <!-- Esquina inferior derecha -->
+    <path d="M 1870,1030 L 1870,930 M 1870,1030 L 1770,1030" opacity="0.8"/>
+    <path d="M 1890,1050 L 1890,910 M 1890,1050 L 1750,1050" opacity="0.5"/>
+  </g>
+
+  <!-- Partículas flotantes -->
+  <g opacity="0.6">
+    <circle cx="300" cy="200" r="3" fill="#00f3ff" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="200;180;200" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1600" cy="300" r="2" fill="#00ff88" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="300;320;300" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="450" cy="800" r="2.5" fill="#00ccff" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="800;780;800" dur="3.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1500" cy="750" r="3" fill="#00f3ff" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="750;770;750" dur="4.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="700" cy="200" r="2" fill="#00ff88" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="200;185;200" dur="3.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="1200" cy="900" r="2.5" fill="#00ccff" filter="url(#glow-filter)">
+      <animate attributeName="cy" values="900;920;900" dur="4.2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Texto futurista -->
+  <g filter="url(#strong-glow)">
+    <text x="960" y="180" font-family="Arial, sans-serif" font-size="72" font-weight="bold" 
+          fill="url(#cyber1)" text-anchor="middle" letter-spacing="8">
+      VULTRAX CORE
+    </text>
+    <text x="960" y="920" font-family="Arial, sans-serif" font-size="36" font-weight="300" 
+          fill="url(#cyber2)" text-anchor="middle" letter-spacing="12" opacity="0.9">
+      ZERO-KNOWLEDGE SECURITY
+    </text>
+  </g>
+
+  <!-- Barras de estado inferiores -->
+  <g opacity="0.7">
+    <rect x="100" y="1000" width="400" height="4" fill="url(#cyber1)" rx="2"/>
+    <rect x="100" y="1000" width="320" height="4" fill="url(#cyber2)" rx="2" opacity="0.8">
+      <animate attributeName="width" values="320;380;320" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    
+    <rect x="1420" y="1000" width="400" height="4" fill="url(#cyber1)" rx="2"/>
+    <rect x="1420" y="1000" width="340" height="4" fill="url(#cyber2)" rx="2" opacity="0.8">
+      <animate attributeName="width" values="340;390;340" dur="2.5s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+
+  <!-- Indicadores de sistema -->
+  <g font-family="monospace" font-size="14" fill="#00f3ff" opacity="0.7">
+    <text x="120" y="1035">ENCRYPTION: ACTIVE</text>
+    <text x="120" y="1055">VAULT: SECURED</text>
+    <text x="1720" y="1035" text-anchor="end">SYNC: ONLINE</text>
+    <text x="1720" y="1055" text-anchor="end">STATUS: OPERATIONAL</text>
+  </g>
+</svg>

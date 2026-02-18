@@ -57,12 +57,21 @@ class DashboardUI:
         brand_layout.setContentsMargins(15, 15, 15, 15)
         brand_layout.setSpacing(5)
         
-        # App Icon/Logo
-        app_icon = QLabel("🛡️")
-        app_icon.setAlignment(Qt.AlignCenter)
-        app_icon.setStyleSheet("font-size: 32px;")
+        # App Icon/Logo (Static Product Branding)
+        self.app_logo_sidebar = QLabel()
+        self.app_logo_sidebar.setAlignment(Qt.AlignCenter)
         
-        # App Name
+        from src.infrastructure.config.path_manager import PathManager
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        
+        if default_logo.exists():
+            pix = QPixmap(str(default_logo)).scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.app_logo_sidebar.setPixmap(pix)
+        else:
+            self.app_logo_sidebar.setText("🛡️")
+            self.app_logo_sidebar.setStyleSheet("font-size: 32px;")
+        
+        # App Name (Software Brand)
         app_name = QLabel("VULTRAX CORE")
         app_name.setAlignment(Qt.AlignCenter)
         app_name.setStyleSheet(self.theme.apply_tokens("""
@@ -73,7 +82,7 @@ class DashboardUI:
             letter-spacing: 2px;
         """))
         
-        brand_layout.addWidget(app_icon)
+        brand_layout.addWidget(self.app_logo_sidebar)
         brand_layout.addWidget(app_name)
         
         brand_card.setStyleSheet(self.theme.apply_tokens("""
@@ -241,11 +250,35 @@ class DashboardUI:
         row2_layout.setContentsMargins(0, 5, 0, 0)
         row2_layout.setSpacing(15)
 
-        self.lbl_v_icon = QLabel("🛡️"); self.lbl_v_icon.setStyleSheet("font-size: 32px;")
-        v_name = "VULTRAX CORE"
-        if hasattr(self, 'sm') and self.sm: v_name = self.sm.get_meta("instance_name") or "VULTRAX CORE"
-        self.lbl_v_name = QLabel(v_name.upper())
-        # ULTRA SIZE: 48px
+        from src.infrastructure.config.path_manager import PathManager
+        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        actual_logo = custom_logo if custom_logo.exists() else default_logo
+
+        self.lbl_v_icon = QLabel()
+        if actual_logo.exists():
+            pix = QPixmap(str(actual_logo)).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.lbl_v_icon.setPixmap(pix)
+        else:
+            self.lbl_v_icon.setText("🛡️")
+            self.lbl_v_icon.setStyleSheet("font-size: 32px;")
+        
+        # 1. Identity Banner (Corporate Brand)
+        self.lbl_v_name = QLabel()
+        self.lbl_v_name.setObjectName("lbl_v_name")
+        
+        # Load identity from DB Meta (Synchronized) with QSettings fallback
+        db_name = None
+        if hasattr(self, 'sm') and self.sm:
+            db_name = self.sm.get_meta("instance_name")
+            
+        if not db_name:
+            from PyQt5.QtCore import QSettings
+            from src.presentation.theme_manager import ThemeManager
+            settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+            db_name = settings.value("company_name", "IT SECURITY")
+            
+        self.lbl_v_name.setText(str(db_name).upper())
         self.lbl_v_name.setStyleSheet(self.theme.apply_tokens("color: @text; font-size: 48px; font-weight: 900; letter-spacing: 3px; background: transparent; padding-bottom: 5px; font-family: @font-family-main;"))
         
         row2_layout.addWidget(self.lbl_v_icon)
@@ -1138,6 +1171,105 @@ class DashboardUI:
         interface_l.addLayout(lock_row)
         
         l.addWidget(interface_card)
+
+        # ============================================================
+        # CARD 7: PERSONALIZACIÓN & BRANDING
+        # ============================================================
+        branding_header = QLabel("🎨 " + MESSAGES.SETTINGS.SEC_BRANDING.upper())
+        branding_header.setObjectName("settings_category_label")
+        l.addWidget(branding_header)
+
+        branding_card = GlassCard()
+        branding_card.setProperty("depth", "settings")
+        branding_l = QVBoxLayout(branding_card)
+        branding_l.setContentsMargins(30, 25, 30, 25)
+        branding_l.setSpacing(18)
+
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(15)
+        brand_info = QVBoxLayout()
+        brand_info.setSpacing(4)
+        brand_title = QLabel("🏢 " + MESSAGES.SETTINGS.LBL_BRANDING.upper())
+        brand_title.setObjectName("settings_label")
+        brand_desc = QLabel(MESSAGES.SETTINGS.DESC_BRANDING)
+        brand_desc.setObjectName("settings_desc")
+        brand_info.addWidget(brand_title)
+        brand_info.addWidget(brand_desc)
+
+        # --- Dynamic Company Name Field ---
+        current_company = None
+        if hasattr(self, 'sm') and self.sm:
+            current_company = self.sm.get_meta("instance_name")
+            
+        if not current_company:
+            from PyQt5.QtCore import QSettings
+            from src.presentation.theme_manager import ThemeManager
+            settings = QSettings(ThemeManager.APP_ID, "VultraxCore_Global")
+            current_company = settings.value("company_name", "IT SECURITY")
+
+        company_row = QHBoxLayout()
+        lbl_comp_name = QLabel(MESSAGES.SETTINGS.LBL_COMPANY_NAME)
+        lbl_comp_name.setObjectName("settings_label_small")
+        lbl_comp_name.setStyleSheet("font-size: 11px; color: @text_dim;")
+        
+        self.txt_company_name = QLineEdit(current_company)
+        self.txt_company_name.setObjectName("settings_input_branding")
+        self.txt_company_name.setFixedWidth(200)
+        self.txt_company_name.setStyleSheet(self.theme.apply_tokens("""
+            QLineEdit#settings_input_branding {
+                background: @ghost_white_5;
+                border: 1px solid @border;
+                border-radius: 6px;
+                padding: 4px 10px;
+                color: @text;
+                font-family: @font-family-main;
+            }
+        """))
+        
+        company_row.addWidget(lbl_comp_name)
+        company_row.addWidget(self.txt_company_name)
+        company_row.addStretch()
+        
+        # Logo Preview Container
+        preview_container = QFrame()
+        preview_container.setFixedSize(60, 60)
+        preview_container.setObjectName("logo_preview_container")
+        preview_container.setStyleSheet("background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;")
+        
+        preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setContentsMargins(2, 2, 2, 2)
+        
+        self.lbl_logo_preview = QLabel()
+        self.lbl_logo_preview.setAlignment(Qt.AlignCenter)
+        
+        # Load current logo for preview
+        from src.infrastructure.config.path_manager import PathManager
+        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        
+        actual_logo = custom_logo if custom_logo.exists() else default_logo
+        if actual_logo.exists():
+            pix = QPixmap(str(actual_logo)).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.lbl_logo_preview.setPixmap(pix)
+        else:
+            self.lbl_logo_preview.setText("🛡️")
+            self.lbl_logo_preview.setStyleSheet("font-size: 20px; color: @text_dim;")
+            
+        preview_layout.addWidget(self.lbl_logo_preview)
+
+        self.btn_change_logo = QPushButton(MESSAGES.SETTINGS.BTN_CHANGE_LOGO)
+        self.btn_change_logo.setCursor(Qt.PointingHandCursor)
+        self.btn_change_logo.setObjectName("btn_settings_action")
+        self.btn_change_logo.setFixedWidth(150)
+        
+        brand_row.addLayout(brand_info)
+        brand_row.addStretch()
+        brand_row.addWidget(preview_container)
+        brand_row.addWidget(self.btn_change_logo)
+        branding_l.addLayout(brand_row)
+        branding_l.addLayout(company_row)
+
+        l.addWidget(branding_card)
         
         # ============================================================
         # CARD 2: SEGURIDAD DE NÚCLEO

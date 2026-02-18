@@ -214,6 +214,44 @@ class ThemeManager(QObject):
         logging.getLogger(__name__).info("ThemeManager: Stylesheet cache cleared.")
 
     _applying_theme = False
+    
+    def sync_app_palette(self, app, theme_id=None):
+        """
+        [DEEP FIX] Synchronizes the global QApplication palette with the theme colors.
+        This prevents white flashes by ensuring the OS 'clear-buffer' uses the dark background
+        before any CSS is even parsed.
+        """
+        from PyQt5.QtGui import QPalette, QColor
+        
+        # Prefer provided theme, then current, then global fallback
+        tid = theme_id or self.current_theme or ThemeManager._GLOBAL_THEME or "tactical_dark"
+        colors = self.THEMES.get(tid)
+        
+        if not colors:
+            self.logger.warning(f"ThemeManager: Theme {tid} not found for palette sync")
+            return
+
+        palette = app.palette()
+        bg_color = QColor(colors['bg'])
+        text_color = QColor(colors['text'])
+        
+        # Set core window colors to DARK
+        palette.setColor(QPalette.Window, bg_color)
+        palette.setColor(QPalette.WindowText, text_color)
+        palette.setColor(QPalette.Base, QColor(colors.get('bg_sec', colors['bg'])))
+        palette.setColor(QPalette.AlternateBase, bg_color)
+        palette.setColor(QPalette.ToolTipBase, bg_color)
+        palette.setColor(QPalette.ToolTipText, text_color)
+        palette.setColor(QPalette.Text, text_color)
+        palette.setColor(QPalette.Button, QColor(colors.get('bg_sec', colors['bg'])))
+        palette.setColor(QPalette.ButtonText, text_color)
+        palette.setColor(QPalette.Highlight, QColor(colors.get('primary', '#3b82f6')))
+        palette.setColor(QPalette.HighlightedText, QColor(colors.get('text_on_primary', '#ffffff')))
+        
+        app.setPalette(palette)
+        # Force redraw if app is already running
+        app.processEvents()
+        self.logger.info(f"ThemeManager: Global Application Palette synchronized with {tid}")
 
     def apply_app_theme(self, app):
         """Applies both base and dashboard styles to the entire application efficiently."""
@@ -229,6 +267,9 @@ class ThemeManager(QObject):
             dash_qss = self.load_stylesheet("dashboard")
             dialog_qss = self.load_stylesheet("dialogs")
             full_qss = f"{base_qss}\n{dash_qss}\n{dialog_qss}"
+            
+            # [DEEP FIX] Sync palette first
+            self.sync_app_palette(app)
             
             app.setStyleSheet(full_qss)
             
@@ -287,7 +328,8 @@ class ThemeManager(QObject):
                     try:
                         parts = val.replace("rgba(", "").replace(")", "").split(",")
                         r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
-                    except: pass
+                    except Exception as e:
+                        logger.debug(f"RGBA parsing failed for {val}: {e}")
                 
                 alpha = 0.45 if k in ["danger", "warning"] else 0.25
                 ghost_colors[f"ghost_{k}"] = f"rgba({r}, {g}, {b}, {alpha})"
