@@ -11,6 +11,7 @@ class ThreatRadarWidget(QWidget):
     Includes scan line animation and internal progress metrics.
     """
     clicked = pyqtSignal()
+    doubleClicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,8 +39,12 @@ class ThreatRadarWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
-            event.accept()
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.doubleClicked.emit()
+        super().mouseDoubleClickEvent(event)
 
     def _rotate_sweep(self):
         self.sweep_angle = (self.sweep_angle + 3) % 360

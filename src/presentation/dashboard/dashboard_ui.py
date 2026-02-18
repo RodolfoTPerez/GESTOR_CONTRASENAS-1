@@ -699,27 +699,34 @@ class DashboardUI:
         dlg.exec_()
 
     def _show_ai_guardian_explanation(self):
-        """Ghost Dialog for AI Guardian"""
-        # Access data via modular card attributes
-        if not hasattr(self, 'card_ai'): return
+        """Ghost Dialog for AI Guardian with Concept Definitions"""
+        if not hasattr(self, 'card_ai_guardian'): return
         
-        risks_txt = self.card_ai.lbl_dot_count.text()
+        # Get live values and labels from Radar
+        radar_vals = self.card_ai_guardian.ai_radar._values
+        radar_labels = self.card_ai_guardian.ai_radar._labels
         
-        # Get live values from Radar
-        radar_vals = self.card_ai.ai_radar._values
-        radar_labels = self.card_ai.ai_radar._labels
-        
+        # 1. CORE STATS (Top Section)
         data = {
-            MESSAGES.EXPLANATIONS.AI_STATUS: self.card_ai.lbl_ai_status.text(),
-            MESSAGES.EXPLANATIONS.AI_RISKS: risks_txt,
+            MESSAGES.EXPLANATIONS.AI_STATUS: self.card_ai_guardian.lbl_ai_status.text(),
+            MESSAGES.EXPLANATIONS.AI_RISKS: self.card_ai_guardian.lbl_dot_count.text(),
             MESSAGES.EXPLANATIONS.AI_LATENCY: MESSAGES.EXPLANATIONS.VAL_AI_LATENCY_12,
-            MESSAGES.EXPLANATIONS.AI_MODEL: MESSAGES.EXPLANATIONS.VAL_AI_MODEL_V4,
-            MESSAGES.EXPLANATIONS.AI_SECTOR_HEAD: MESSAGES.EXPLANATIONS.AI_SONAR
+            MESSAGES.EXPLANATIONS.AI_MODEL: MESSAGES.EXPLANATIONS.VAL_AI_MODEL_V4
         }
         
-        # Add the 8 Radar Axes as individual metrics
+        # 2. SECTOR DEFINITIONS (Main Request)
+        # We add a header for the definitions section using the INTERP_RADAR description
+        data[MESSAGES.EXPLANATIONS.AI_SECTOR_HEAD] = MESSAGES.EXPLANATIONS.INTERP_RADAR
+        
+        # Map each label to its percentage AND its definition
         for i in range(len(radar_labels)):
-            data[f"{MESSAGES.EXPLANATIONS.AI_SECTOR}: {radar_labels[i]}"] = f"{radar_vals[i]}%"
+            label = radar_labels[i]
+            val = f"{radar_vals[i]}%"
+            
+            # Key format: "Sector: NAME (Value%)"
+            # This allows the dialog's _interpret_metric to find the keyword "NAME"
+            key = f"{MESSAGES.EXPLANATIONS.AI_SECTOR}: {label} ({val})"
+            data[key] = val
 
         dlg = GhostExplanationDialog(MESSAGES.EXPLANATIONS.TITLE_AI, data, self)
         dlg.move(self.window().frameGeometry().center() - dlg.rect().center())

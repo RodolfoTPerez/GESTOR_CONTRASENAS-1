@@ -327,20 +327,22 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             self.btn_go_ai.clicked.connect(go_ai)
             
         if hasattr(self, 'card_ai_guardian'):
-            def go_ai_from_card():
-                self.main_stack.setCurrentWidget(self.view_ai)
-                self.btn_nav_ai_side.setChecked(True)
-            self.card_ai_guardian.clicked.connect(go_ai_from_card)
+            # [FIX] Removed .clicked navigation as it conflicts with doubleClicked explanation dialog.
+            # Users can still navigate via sidebar or the dedicated "go_ai" buttons.
+            pass
+            # def go_ai_from_card():
+            #     self.main_stack.setCurrentWidget(self.view_ai)
+            #     self.btn_nav_ai_side.setChecked(True)
+            # self.card_ai_guardian.clicked.connect(go_ai_from_card)
         if hasattr(self, 'btn_go_monitor'): self.btn_go_monitor.clicked.connect(self._open_monitor_sessions)
         if hasattr(self, 'btn_go_sync'): self.btn_go_sync.clicked.connect(self._on_sync)
         if hasattr(self, 'btn_go_services'): self.btn_go_services.clicked.connect(self._on_add)
         if hasattr(self, 'btn_ai_analysis'): self.btn_ai_analysis.clicked.connect(self._on_ai_audit)
         
         # [SIGNAL-BASED INTERACTION] No more eventFilters
-        
-        # [SIGNAL-BASED INTERACTION] No more eventFilters
-        if hasattr(self, 'gauge'): self.gauge.clicked.connect(self._on_ai_audit)
-        if hasattr(self, 'ai_radar'): self.ai_radar.clicked.connect(self._on_ai_audit)
+        # [FIX] Removed .clicked audit as it conflicts with doubleClicked explanation dialog.
+        # if hasattr(self, 'gauge'): self.gauge.clicked.connect(self._on_ai_audit)
+        # if hasattr(self, 'ai_radar'): self.ai_radar.clicked.connect(self._on_ai_audit)
         
         # DASHBOARD QUICK SEARCH (Fast Access Protocol)
         if hasattr(self, 'dash_search'):

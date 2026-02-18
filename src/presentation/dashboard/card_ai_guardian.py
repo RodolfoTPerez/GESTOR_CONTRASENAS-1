@@ -55,6 +55,7 @@ class AIGuardianCard(VultraxBaseCard):
 
         self.ai_radar = ThreatRadarWidget()
         self.ai_radar.setFixedSize(190, 190)
+        self.ai_radar.doubleClicked.connect(self.doubleClicked.emit)
         rl.addWidget(self.ai_radar)
         
         content_layout.addWidget(self.radar_container, 55)
