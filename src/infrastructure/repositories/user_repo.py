@@ -146,3 +146,18 @@ class UserRepository:
         except Exception as e:
             logger.error(f"Error updating protected key for '{username}': {e}")
             return False
+
+    def update_wrapped_vault_key(self, username: str, wrapped_key: bytes) -> bool:
+        """Updates the wrapped vault key for the user in the legacy table."""
+        try:
+            # Also ensure we check vs multi-vault if vault_id is known, 
+            # but for now, SecretsManager calls this for the primary migration.
+            self.db.execute(
+                "UPDATE users SET wrapped_vault_key = ? WHERE UPPER(username) = ?",
+                (sqlite3.Binary(wrapped_key), str(username).upper())
+            )
+            self.db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating wrapped vault key for '{username}': {e}")
+            return False

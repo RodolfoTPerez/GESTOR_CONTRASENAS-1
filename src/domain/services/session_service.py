@@ -98,6 +98,13 @@ class SessionService:
                     setattr(self, key_attr, None)
             
             if self.kek_candidates:
+                for label, key_obj in self.kek_candidates.items():
+                    if isinstance(key_obj, (bytearray, bytes)):
+                        # If it's a bytearray, zero it out. If it's bytes, we replace it.
+                        # (Ideally everything should be bytearray for security)
+                        if isinstance(key_obj, bytearray):
+                            for i in range(len(key_obj)):
+                                key_obj[i] = 0
                 self.kek_candidates = {}
 
             self.current_user = None

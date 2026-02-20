@@ -22,6 +22,7 @@ from cryptography.hazmat.backends import default_backend
 import logging
 import time
 from functools import wraps
+from typing import Any, Optional, Tuple, List, Dict
 from src.infrastructure.security.rate_limiter import RateLimiter
 
 # NEW: Argon2 support
@@ -56,11 +57,12 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+from config.config import AUTH_MAX_ATTEMPTS, AUTH_WINDOW_SECONDS
 # [NEW] Global RateLimiter instance and registry
-auth_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+auth_limiter = RateLimiter(max_attempts=AUTH_MAX_ATTEMPTS, window_seconds=AUTH_WINDOW_SECONDS)
 _limiters = [auth_limiter]
 
-def rate_limit(max_attempts=5, window=60):
+def rate_limit(max_attempts=AUTH_MAX_ATTEMPTS, window=AUTH_WINDOW_SECONDS):
     """
     Decorador para prevenir ataques de fuerza bruta/timing.
     Usa el nombre de la función como clave para evitar bypass mediante variación de parámetros.
@@ -105,6 +107,8 @@ class CryptoEngine:
     Utiliza AESGCM (AES-256-GCM) para mantener compatibilidad con el sistema actual.
     """
     
+    # --- CONSTANTES ---
+    ARGON2_AVAILABLE = ARGON2_AVAILABLE
     # Constantes criptográficas
     KEY_SIZE = 32  # 256 bits para AES-256
     NONCE_SIZE = 12  # Recomendado para AES-GCM
@@ -417,11 +421,33 @@ class CryptoEngine:
         return nonce + ciphertext
     
     @staticmethod
-    @rate_limit(max_attempts=20, window=30)
-    def unwrap_vault_key(wrapped_key: bytes, user_password: str, user_salt: bytes) -> bytes:
+    @staticmethod
+    def derive_kek_argon2id(password: str, salt: bytes, memory_cost: int = 65536, time_cost: int = 2, parallelism: int = 1) -> bytes:
         """
-        Desencripta (unwrap) la vault_master_key usando la password del usuario.
-        [ULTRA RECOVERY] Soporta múltiples recuentos de iteraciones (1k, 10k, 100k y 600k).
+        [GOD-LEVEL] Derives a KEK using Argon2id (resistant to GPU/ASIC attacks).
+        Default: 64MB RAM consumption per derivation.
+        """
+        if not ARGON2_AVAILABLE:
+            raise RuntimeError("Argon2 not available for KEK derivation")
+            
+        from argon2.low_level import hash_secret_raw, Type
+        return hash_secret_raw(
+            password.encode(), 
+            salt,
+            time_cost=time_cost, 
+            memory_cost=memory_cost,
+            parallelism=parallelism, 
+            hash_len=CryptoEngine.KEY_SIZE, 
+            type=Type.ID
+        )
+
+    @staticmethod
+    @rate_limit(max_attempts=20, window=30)
+    def unwrap_vault_key(wrapped_key: bytes, user_password: str, user_salt: bytes) -> Tuple[bytes, str]:
+        """
+        Desencripta la vault_master_key usando la password del usuario.
+        [ULTRA RECOVERY] Soporta Argon2id y múltiples recuentos de PBKDF2.
+        Returns: (decrypted_key, algorithm_used)
         """
         if not isinstance(wrapped_key, bytes):
             raise TypeError("wrapped_key must be bytes")
@@ -431,16 +457,24 @@ class CryptoEngine:
         nonce = wrapped_key[:CryptoEngine.NONCE_SIZE]
         ciphertext = wrapped_key[CryptoEngine.NONCE_SIZE:]
         
-        # Probar recuentos de iteraciones comunes (Standard, Ultra, Legacy y Forensic)
+        # 1. Try Argon2id (New Standard)
+        if ARGON2_AVAILABLE:
+            try:
+                kek = CryptoEngine.derive_kek_argon2id(user_password, user_salt)
+                aes_gcm = AESGCM(kek)
+                return aes_gcm.decrypt(nonce, ciphertext, None), "argon2id"
+            except Exception:
+                pass
+
+        # 2. Try PBKDF2 iterations (Legacy & Forensic Fallback)
         for iter_count in [100000, 600000, 10000, 1000]:
             try:
                 kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, iterations=iter_count)
                 aes_gcm = AESGCM(kek)
-                return aes_gcm.decrypt(nonce, ciphertext, None)
+                return aes_gcm.decrypt(nonce, ciphertext, None), "pbkdf2"
             except Exception:
                 continue
                 
-        # Si llegamos aquí, ninguno de los recuentos funcionó
         raise ValueError("Error de autenticación: El password o la llave de bóveda no coinciden.")
 
 

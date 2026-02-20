@@ -17,7 +17,7 @@
 
 #FormArea {
     background: transparent;
-    padding: 0 45px 40px 45px;
+    padding: 0 45px 10px 45px;
 }
 
 QLabel {
@@ -40,9 +40,11 @@ QLabel#tagline {
 }
 
 QLabel#welcome_label {
-    font-size: 24px;
-    font-weight: 800;
-    color: @text;
+    font-size: 18px;
+    font-weight: 900;
+    color: white;
+    letter-spacing: 3px;
+    text-transform: uppercase;
 }
 
 QLabel#subtitle_label {
@@ -88,8 +90,9 @@ QPushButton#btn_reg_toggle, QPushButton#btn_recovery {
     border: none;
     color: @text_dim;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 11px;
     background: transparent;
+    padding: 2px;
 }
 
 QPushButton#btn_reg_toggle:hover, QPushButton#btn_recovery:hover {

@@ -68,5 +68,5 @@ class SecurityService:
     def wrap_key(self, key_to_wrap: any, password: str, salt: any) -> bytes:
         return CryptoEngine.wrap_vault_key(self.ensure_bytes(key_to_wrap), password, self.ensure_bytes(salt))
 
-    def unwrap_key(self, wrapped_data: any, password: str, salt: any) -> bytes:
+    def unwrap_key(self, wrapped_data: any, password: str, salt: any) -> Tuple[bytes, str]:
         return CryptoEngine.unwrap_vault_key(self.ensure_bytes(wrapped_data), password, self.ensure_bytes(salt))

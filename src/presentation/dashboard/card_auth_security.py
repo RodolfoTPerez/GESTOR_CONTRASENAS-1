@@ -8,7 +8,7 @@ from src.domain.messages import MESSAGES
 class AuthSecurityCard(VultraxBaseCard):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(300)
+        self.setFixedHeight(310)
         self.setProperty("depth", "dashboard")
         self._setup_ui()
         self.retranslateUi()

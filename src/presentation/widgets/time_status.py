@@ -35,6 +35,9 @@ class TimeSyncWidget(QWidget):
         
     def paintEvent(self, event):
         colors = self.theme.get_theme_colors()
+        # [SENIOR FIX] Respect global dimmer
+        dimmer = getattr(self.theme, '_GLOBAL_OPACITY', 1.0)
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -48,7 +51,10 @@ class TimeSyncWidget(QWidget):
         
         # Clock (80% for Ghost)
         is_ghost = self.property("ghost") == "true"
-        if is_ghost: c.setAlpha(204) # 80% HUD Aesthetic (Senior: Increased from 40%)
+        if is_ghost: 
+            c.setAlpha(int(204 * dimmer)) 
+        else:
+            c.setAlpha(int(255 * dimmer))
         
         painter.setPen(QPen(c, 2.0)); painter.setBrush(Qt.NoBrush)
         painter.drawEllipse(QRectF(ix - radius, cy - radius, radius*2, radius*2))
@@ -58,14 +64,16 @@ class TimeSyncWidget(QWidget):
         # Pulse Dot (50% for Ghost)
         pb = math.sin(self._pulse_phase * 2 * math.pi)
         d_color = c if self._status == "OK" else QColor(colors["danger"])
-        dot_alpha = int((140 + 115 * pb) * 0.5) if is_ghost else int(140 + 115 * pb) # Senior: Increased from 0.25
+        dot_alpha = int((140 + 115 * pb) * 0.5) if is_ghost else int(140 + 115 * pb)
+        dot_alpha = int(dot_alpha * dimmer)
+        
         painter.setBrush(QColor(d_color.red(), d_color.green(), d_color.blue(), dot_alpha))
         painter.setPen(Qt.NoPen)
         gr = 3.0 + 2.0 * pb
         painter.drawEllipse(QRectF(ix + 10 - gr, cy - 10 - gr, gr * 2, gr * 2))
         
         # Text (40% for Ghost)
-        painter.setPen(c)
+        painter.setPen(c) # c already has alpha set above
         font = QFont("Inter", 11, QFont.Bold); font.setLetterSpacing(QFont.AbsoluteSpacing, 1)
         painter.setFont(font)
         painter.drawText(QRectF(40, 0, 70, self.height()), Qt.AlignLeft | Qt.AlignVCenter, self._time_text)

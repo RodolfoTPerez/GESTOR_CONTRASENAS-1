@@ -126,13 +126,25 @@ class SecretRepository:
             logger.error(f"Error checking existence for service '{service_name}': {e}")
             return False
 
-    def get_all_encrypted(self, current_user: str, only_mine: bool = False) -> List[Dict[str, Any]]:
+    def get_all_encrypted(self, current_user: str, only_mine: bool = False, limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Retrieves encrypted secrets with pagination support to avoid RAM saturation.
+        """
         try:
             user_clean = str(current_user).upper()
-            if only_mine:
-                cursor = self.db.execute("SELECT * FROM secrets WHERE UPPER(owner_name) = ?", (user_clean,))
-            else:
-                cursor = self.db.execute("SELECT * FROM secrets WHERE is_private = 0 OR UPPER(owner_name) = ?", (user_clean,))
+            
+            base_query = "SELECT * FROM secrets"
+            where_clause = " WHERE UPPER(owner_name) = ?" if only_mine else " WHERE is_private = 0 OR UPPER(owner_name) = ?"
+            params = [user_clean]
+            
+            query = base_query + where_clause
+            
+            # Pagination Logic
+            if limit is not None:
+                query += " LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+            
+            cursor = self.db.execute(query, tuple(params))
             
             cols = [d[0] for d in cursor.description]
             res = []

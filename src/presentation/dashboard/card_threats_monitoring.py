@@ -7,7 +7,7 @@ from src.domain.messages import MESSAGES
 class ThreatsMonitoringCard(VultraxBaseCard):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(300)
+        self.setFixedHeight(310)
         self.setProperty("depth", "dashboard")
         self._setup_ui()
         self.retranslateUi()
@@ -68,11 +68,13 @@ class ThreatsMonitoringCard(VultraxBaseCard):
         
         # Red Dot Indicator
         dot = QLabel("●")
-        dot.setStyleSheet("color: #ef4444 !important; font-size: 14px !important; background: transparent !important;")
+        dot.setObjectName("threat_dot_indicator") # Moved style to QSS or ThemeManager
+        dot.setStyleSheet("font-size: 14px; background: transparent;")
         h_alert.addWidget(dot)
 
         self.lbl_alert_msg = QLabel()
-        self.lbl_alert_msg.setStyleSheet("color: #f8fafc !important; font-size: 13px !important; font-weight: 700 !important; border: none !important; background: transparent !important;") 
+        self.lbl_alert_msg.setObjectName("threat_alert_msg")
+        self.lbl_alert_msg.setStyleSheet("font-size: 13px; font-weight: 700; border: none; background: transparent;") 
         h_alert.addWidget(self.lbl_alert_msg)
         h_alert.addStretch()
         alert_layout.addLayout(h_alert)
@@ -134,13 +136,33 @@ class ThreatsMonitoringCard(VultraxBaseCard):
                 (MESSAGES.AI.WARN_ENTROPY, "#fbbf24"),
                 (MESSAGES.AI.WARN_CLUSTERS, "#fbbf24")
             ]
-            for text, color in warnings:
+            for text, color_code in warnings:
+                # [ATOMIC FIX] Use ThemeManager to get dimmed version of the warning color
+                # We assume color_code is a hex string like #fbbf24
+                # But to support dimming, we should use the theme's warning color if possible, 
+                # or rely on the ThemeManager's apply_dimmer logic if we pass it through style tokens.
+                
+                # Option 1: Use specific ID and set property
                 row = QHBoxLayout()
                 row.setSpacing(8)
+                
+                # We can't easily perform QSS variable substitution here dynamically without a reload,
+                # so we will use inline style BUT constructed via ThemeManager if available, 
+                # or just hardcode specific class IDs and let QSS handle it.
+                
+                # BETTER APPROACH: Use standard classes
                 icon = QLabel(">")
-                icon.setStyleSheet(f"color: {color} !important; font-weight: 900 !important; font-size: 13px !important; background: transparent !important;")
+                icon.setObjectName("warning_icon") # Style in QSS with @warning color
+                
                 lbl = QLabel(text)
-                lbl.setStyleSheet(f"color: {color} !important; font-size: 13px !important; font-weight: 600 !important; background: transparent !important;")
+                lbl.setObjectName("warning_label") # Style in QSS with @warning or @text
+                
+                # For now, to keep the specific color, we need to manually dim it if we keep inline styles.
+                # However, moving to QSS is the goal.
+                # Let's try to set a property and use QSS
+                icon.setProperty("status", "warning")
+                lbl.setProperty("status", "warning")
+                
                 row.addWidget(icon); row.addWidget(lbl); row.addStretch()
                 self.warning_list_layout.addLayout(row)
 

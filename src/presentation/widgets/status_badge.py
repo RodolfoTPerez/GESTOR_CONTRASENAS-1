@@ -40,6 +40,9 @@ class StatusBadgeWidget(QWidget):
         
     def paintEvent(self, event):
         colors = self.theme.get_theme_colors()
+        # [SENIOR FIX] Respect global dimmer
+        dimmer = getattr(self.theme, '_GLOBAL_OPACITY', 1.0)
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -50,20 +53,20 @@ class StatusBadgeWidget(QWidget):
             
         # [NEON SHIELD OVERRIDE]
         if self.icon_char == "🛡️" and self.status_type == "OK":
-            c = QColor("#00ff99") # Ultra-vibrant Neon Green for the shield
+            c = QColor(colors.get("success", "#10b981")).lighter(120) # Dynamic Neo-Vibrant
             
         is_ghost = self.property("ghost") == "true"
         pulse_val = math.sin(self._pulse_phase * 2 * math.pi) if self._syncing else 0
         if self.status_type != "OK" or self._syncing:
             glow_opacity = 50 if self.status_type == "ERROR" else (int(40 + 40 * pulse_val) if self._syncing else 20)
             if is_ghost: glow_opacity = int(glow_opacity * 0.5) 
-            painter.setBrush(QColor(c.red(), c.green(), c.blue(), glow_opacity))
+            painter.setBrush(QColor(c.red(), c.green(), c.blue(), int(glow_opacity * dimmer)))
             painter.setPen(Qt.NoPen); painter.drawEllipse(QRectF(8, 8, 24, 24))
             
         painter.setFont(QFont("Segoe UI Symbol", 16))
         icon_opacity = 255 if self.status_type == "ERROR" else (int(180 + 75 * pulse_val) if self._syncing else 140)
         if is_ghost: icon_opacity = int(icon_opacity * 0.85) 
-        painter.setPen(QColor(c.red(), c.green(), c.blue(), icon_opacity))
+        painter.setPen(QColor(c.red(), c.green(), c.blue(), int(icon_opacity * dimmer)))
         
         # [SYNC ROTATION]
         if self.icon_char == "🔄" and self._syncing:

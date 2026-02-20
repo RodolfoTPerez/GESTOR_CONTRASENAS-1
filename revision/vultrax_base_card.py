@@ -2,15 +2,16 @@ from PyQt5.QtWidgets import QFrame, QVBoxLayout
 from PyQt5.QtCore import Qt, pyqtSignal
 from src.presentation.theme_manager import ThemeManager
 
+
 class VultraxBaseCard(QFrame):
     """
     Standard Base Card for Vultrax Core Design System.
     Implements 12-column grid compatibility and token-based styling.
 
     DIMMER INTEGRATION:
-    - set_dimmer_opacity(float) applies global opacity to ALL children
-    - refresh_styles() regenerates QSS respecting ThemeManager._GLOBAL_OPACITY
-    - Backgrounds (bg, card_bg) remain unaffected by design (see ThemeManager.apply_tokens)
+    - set_dimmer_opacity(float) aplica la opacidad globalmente a TODOS los hijos
+    - refresh_styles() regenera el QSS respetando ThemeManager._GLOBAL_OPACITY
+    - El fondo (bg, card_bg) NO se ve afectado por diseño (ver ThemeManager.apply_tokens)
     """
 
     doubleClicked = pyqtSignal()
@@ -30,22 +31,22 @@ class VultraxBaseCard(QFrame):
         # AFTER _setup_ui() to ensure all tactical indicators are defined.
 
     # ─────────────────────────────────────────────
-    # DIMMER API — Single Entry Point
+    # DIMMER API — Punto de entrada único
     # ─────────────────────────────────────────────
 
     def set_dimmer_opacity(self, opacity: float):
         """
-        Receives DimmerSlider value (0.2 – 1.0) and propagates it to 
-        global ThemeManager. Then regenerates styles for THIS card.
+        Recibe el valor del DimmerSlider (0.2 – 1.0) y lo propaga al
+        ThemeManager global. Luego regenera los estilos de ESTA tarjeta.
 
-        By using ThemeManager._GLOBAL_OPACITY, ALL @primary_XX tokens,
-        @secondary_XX, etc. are automatically modulated. Backgrounds
-        (bg, card_bg, ghost_bg) remain intact by ThemeManager design.
+        Al usar ThemeManager._GLOBAL_OPACITY, TODOS los tokens @primary_XX,
+        @secondary_XX, etc. quedan automáticamente modulados. Los fondos
+        (bg, card_bg, ghost_bg) quedan intactos por diseño del ThemeManager.
         """
-        # 1. Update ThemeManager global state (Redundant if slider calls it, but safe)
+        # 1. Actualizar el estado global del ThemeManager
         ThemeManager.set_global_opacity(opacity)
 
-        # 2. Regenerate styles for this card with new opacity
+        # 2. Regenerar estilos de esta tarjeta con la nueva opacidad
         self.refresh_styles()
 
     # ─────────────────────────────────────────────
@@ -54,17 +55,17 @@ class VultraxBaseCard(QFrame):
 
     def refresh_styles(self):
         """
-        Regenerates QSS from ThemeManager respecting:
-        - Active Theme (ThemeManager._GLOBAL_THEME)
-        - Active Opacity (ThemeManager._GLOBAL_OPACITY)
+        Regenera el QSS desde el ThemeManager respetando:
+        - El tema activo (ThemeManager._GLOBAL_THEME)
+        - La opacidad activa (ThemeManager._GLOBAL_OPACITY)
 
-        Backgrounds are NOT affected (background_keys in apply_tokens).
-        Semantic colors (primary, text, danger...) ARE dimmed.
+        Los fondos NO se ven afectados (background_keys en apply_tokens).
+        Los colores semánticos (primary, text, danger…) SÍ se dimmean.
         """
-        # Clear cache so apply_tokens regenerates with current opacity
+        # Limpiar el cache para que apply_tokens regenere con la opacidad actual
         ThemeManager.clear_cache()
 
-        # Repolish: Qt re-reads application QSS and applies to this widget
+        # Repolish: Qt relee el QSS de la aplicación y lo aplica a este widget
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()

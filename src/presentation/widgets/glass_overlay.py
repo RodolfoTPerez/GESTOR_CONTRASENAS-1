@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QGraphicsOpacityEffect, QGraphicsBlurEffect
 from PyQt5.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QSize
 from PyQt5.QtGui import QColor, QPainter, QBrush, QPen
+from src.presentation.theme_manager import ThemeManager
 
 class GlassOverlay(QWidget):
     """
@@ -13,31 +14,51 @@ class GlassOverlay(QWidget):
         super().__init__(parent_widget)
         self.setAttribute(Qt.WA_DeleteOnClose)
         
+        self.theme = ThemeManager()
+        
         # Cubrir todo el padre
         self.resize(parent_widget.size())
         
-        # Color de fondo (Velo oscuro)
-        self.bg_color = QColor(10, 15, 30, 0) # Empieza transparente para animación
+        # Color de fondo dinamico
+        colors = self.theme.get_theme_colors()
+        bg_rgb = colors.get('bg', '#0a0f1d')
+        # Convert hex to QColor to get loose RGB
+        c = QColor(bg_rgb)
+        self.bg_color_base = QColor(c.red(), c.green(), c.blue(), 200) # Base para paintEvent
         
         # Layout principal centrado
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignCenter)
         
+        # [SENIOR FIX] Restore Glass Transparency
+        # The theme returns solid hex for tactical (#0f172a), but we need RGBA for glass effect.
+        # We parse the theme color and apply alpha programmatically.
+        card_bg_hex = colors.get("bg_dashboard_card", "#0f172a")
+        if card_bg_hex.startswith("#"):
+            c_bg = QColor(card_bg_hex)
+            # 242 = 0.95 alpha approx (Visible but slightly transparent)
+            bg_style = f"rgba({c_bg.red()}, {c_bg.green()}, {c_bg.blue()}, 0.95)"
+        else:
+            bg_style = card_bg_hex # Already RGBA or named
+            
+        # Border also needs transparency if not provided
+        border_val = colors.get("border", "rgba(255, 255, 255, 0.1)")
+        
         # Tarjeta de Diálogo
         self.card = QFrame()
         self.card.setObjectName("glass_card")
         self.card.setFixedSize(400, 220)
-        self.card.setStyleSheet("""
-            QFrame#glass_card {
-                background-color: rgba(30, 41, 59, 0.95);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 12px;
-            }
-            QLabel {
+        self.card.setStyleSheet(self.theme.apply_tokens(f"""
+            QFrame#glass_card {{
+                background-color: {bg_style};
+                border: 1px solid {border_val};
+                border-radius: @border-radius-main;
+            }}
+            QLabel {{
                 background: transparent;
                 border: none;
-            }
-        """)
+            }}
+        """))
         
         # Contenido de la tarjeta
         self.card_layout = QVBoxLayout(self.card)
@@ -50,7 +71,7 @@ class GlassOverlay(QWidget):
         self.icon_lbl.setStyleSheet("font-size: 32px;")
         
         self.title_lbl = QLabel(title.upper())
-        self.title_lbl.setStyleSheet("color: #e2e8f0; font-weight: 900; font-size: 14px; letter-spacing: 1px;")
+        self.title_lbl.setStyleSheet(self.theme.apply_tokens("color: @text; font-weight: 900; font-size: 14px; letter-spacing: 1px;"))
         
         self.h_header.addWidget(self.icon_lbl)
         self.h_header.addWidget(self.title_lbl)
@@ -59,7 +80,7 @@ class GlassOverlay(QWidget):
         # Mensaje
         self.msg_lbl = QLabel(message)
         self.msg_lbl.setWordWrap(True)
-        self.msg_lbl.setStyleSheet("color: #94a3b8; font-size: 13px; font-weight: 500; line-height: 1.4;")
+        self.msg_lbl.setStyleSheet(self.theme.apply_tokens("color: @text_dim; font-size: 13px; font-weight: 500; line-height: 1.4;"))
         
         # Botones
         self.h_btns = QHBoxLayout()
@@ -72,30 +93,30 @@ class GlassOverlay(QWidget):
             btn.setCursor(Qt.PointingHandCursor)
             btn.setFixedHeight(40)
             
-        self.btn_yes.setStyleSheet("""
+        self.btn_yes.setStyleSheet(self.theme.apply_tokens("""
             QPushButton {
-                background-color: #06b6d4;
-                color: white;
+                background-color: @primary;
+                color: @text_on_primary;
                 border: none;
                 border-radius: 6px;
                 font-weight: bold;
                 font-size: 11px;
                 letter-spacing: 0.5px;
             }
-            QPushButton:hover { background-color: #0891b2; }
-        """)
+            QPushButton:hover { background-color: @accent; }
+        """))
         
-        self.btn_no.setStyleSheet("""
+        self.btn_no.setStyleSheet(self.theme.apply_tokens("""
             QPushButton {
                 background-color: transparent;
-                color: #cbd5e1;
-                border: 1px solid #475569;
+                color: @text_dim;
+                border: 1px solid @border;
                 border-radius: 6px;
                 font-weight: bold;
                 font-size: 11px;
             }
-            QPushButton:hover { background-color: rgba(255,255,255,0.05); color: white; }
-        """)
+            QPushButton:hover { background-color: @border; color: @text; }
+        """))
         
         self.btn_yes.clicked.connect(lambda: self.on_answer(True))
         self.btn_no.clicked.connect(lambda: self.on_answer(False))
@@ -144,4 +165,4 @@ class GlassOverlay(QWidget):
         # Dibujar el fondo semitransparente manualmente
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.fillRect(self.rect(), QColor(10, 15, 30, 200)) # Azul oscuro muy opaco
+        painter.fillRect(self.rect(), self.bg_color_base)

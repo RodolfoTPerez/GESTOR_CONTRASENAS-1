@@ -35,7 +35,10 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         
         # 2. Atributos de prohibición de fondo blanco
         self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WA_StyledBackground, True) # [SENIOR FIX] Ensure background is painted
+        # self.setAttribute(Qt.WA_OpaquePaintEvent, True) # DISABLE Opaque to allow composition if needed
+
+
         
         # 3. Forzar Modo Oscuro Inmersivo en Windows (Hardware Level)
         try:
@@ -70,12 +73,14 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         saved_theme = self.settings.value("theme_active") or self.global_settings.value("theme_active", "tactical_dark")
         self.theme_manager.theme_changed.connect(lambda: self.theme_manager.apply_app_theme(QApplication.instance()))
         self.theme_manager.theme_changed.connect(self._refresh_all_widget_themes)
+        
+        # [SENIOR FIX] Connect dynamic background update to theme changes
+        self.theme_manager.theme_changed.connect(self._apply_root_background)
+        
         self.theme_manager.set_theme(saved_theme)
         
-        # Forzar color de fondo inmediato antes de construir UI
-        colors = self.theme_manager.get_theme_colors()
-        bg_color = colors.get('bg', '#050505')
-        self.setStyleSheet(f"QWidget {{ background-color: {bg_color}; }}")
+        # Initialize background immediately
+        self._apply_root_background()
         
         self.theme_manager.apply_app_theme(QApplication.instance())
         self._refresh_all_widget_themes()
@@ -234,6 +239,27 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                     self.lbl_countdown.setTime("00:00")
                     self.lbl_countdown.setStatus("ERROR")
 
+    def paintEvent(self, event):
+        """
+        [SENIOR RENDERING FIX]
+        Manually fill the background to prevent 'Ghosting/Artifacts' when switching 
+        between transparent views (Glass Effect).
+        """
+        from PyQt5.QtGui import QPainter, QColor
+        
+        # [CRITICAL] Check if theme_manager is ready (avoid startup crash)
+        if not hasattr(self, 'theme_manager'):
+            return
+
+        painter = QPainter(self)
+        # Use the theme's background color directly or fallback to black
+        # This ensures the 'canvas' is always clean before drawing children
+        colors = self.theme_manager.get_theme_colors()
+        bg_color = QColor(colors.get('bg', '#050505'))
+        painter.fillRect(self.rect(), bg_color)
+        # No super().paintEvent(event) needed as we handle the background here,
+        # and children will paint themselves on top.
+
     def showEvent(self, event):
         """Asegura que el Dashboard se muestre maximizado de forma segura."""
         if not self._is_showing_maximized:
@@ -260,6 +286,9 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
 
     def _connect_ui_signals(self):
         """Conecta cada botón de la nueva interfaz modular con su lógica en DashboardActions."""
+        if hasattr(self, 'nav_group'):
+            self.nav_group.buttonClicked[int].connect(self._on_nav_clicked)
+
         # TopBar
         # TopBar (Global Control Center)
         # [UI CLEANUP] TopBar buttons removed.
@@ -383,6 +412,7 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         if hasattr(self, 'btn_change_pwd_real'): self.btn_change_pwd_real.clicked.connect(self._on_change_password)
         if hasattr(self, 'btn_repair_vault_dashboard'): self.btn_repair_vault_dashboard.clicked.connect(self._on_repair_vault_dashboard)
         if hasattr(self, 'btn_change_logo'): self.btn_change_logo.clicked.connect(self._on_change_logo)
+        if hasattr(self, 'btn_mod_company'): self.btn_mod_company.clicked.connect(self._enable_company_name_edit)
         if hasattr(self, 'txt_company_name'): self.txt_company_name.returnPressed.connect(self._on_change_company_name)
         
         # [SIGNAL-BASED INTERACTION] No more eventFilters
@@ -400,6 +430,22 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         if hasattr(self, 'btn_local_backup'): self.btn_local_backup.clicked.connect(self._on_local_backup)
         if hasattr(self, 'btn_local_restore'): self.btn_local_restore.clicked.connect(self._on_local_restore)
         if hasattr(self, 'btn_purge_private'): self.btn_purge_private.clicked.connect(self._on_purge_private)
+
+    def _on_nav_clicked(self, index):
+        """Maneja la navegación principal del sidebar."""
+        # 0: Dashboard, 1: Vault, 2: AI, 3: Activity, 4: Admin, 5: Settings
+        if index == 0:
+            self.main_stack.setCurrentWidget(self.view_dashboard)
+        elif index == 1:
+            self.main_stack.setCurrentWidget(self.view_vault)
+        elif index == 2:
+            self.main_stack.setCurrentWidget(self.view_ai)
+        elif index == 3:
+            self.main_stack.setCurrentWidget(self.view_activity)
+        elif index == 4:
+            self.main_stack.setCurrentWidget(self.view_users)
+        elif index == 5:
+            self.main_stack.setCurrentWidget(self.view_settings)
 
     def _on_connectivity_update(self, internet, supabase_msg, sqlite_msg, sync_err=None, audit_err=None, is_syncing=False):
         """Recibe actualizaciones del hilo secundario y aplica estados a los widgets visuales."""
@@ -508,11 +554,10 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
                 self.lbl_ph_smart_text.style().unpolish(self.lbl_ph_smart_text)
                 self.lbl_ph_smart_text.style().polish(self.lbl_ph_smart_text)
             
-            # [RESTORED] Detailed Metrics Update
-            if hasattr(self, 'lbl_ph_weak'): self.lbl_ph_weak.setText(str(stats.get('weak_count', 0)))
-            if hasattr(self, 'lbl_ph_reused'): self.lbl_ph_reused.setText(str(stats.get('reused_count', 0)))
-            if hasattr(self, 'lbl_ph_strong'): self.lbl_ph_strong.setText(str(stats.get('strong_count', 0)))
-            if hasattr(self, 'lbl_ph_old'): self.lbl_ph_old.setText(str(stats.get('old_count', 0)))
+            # [REFIX] Centralized Metrics Update in Card (Handles Dynamic Colors if 0)
+            if hasattr(self, 'card_health'):
+                self.card_health.set_stats(stats)
+
 
             # 3. Tactical Radar Update
             # Guardar issues para el Ghost Fix Dialog
@@ -1163,22 +1208,56 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
 
     def _refresh_all_widget_themes(self):
         """Dispara el ciclo de refresco en todos los widgets con lógica de estilo personalizada."""
-        # 1. Refresco Nuclear: Buscar recursivamente cualquier widget con refresh_theme
-        from PyQt5.QtWidgets import QWidget
-        for widget in self.findChildren(QWidget):
-            if hasattr(widget, 'refresh_theme') and callable(widget.refresh_theme):
-                try: 
-                    widget.refresh_theme()
-                except Exception as e: 
-                    logger.debug(f"Silent skip refresh on {widget.__class__.__name__}: {e}")
+        try:
+            # 0. Refresco de Sidebar (Critical for 'Wrong Color' fix)
+            if hasattr(self, 'sidebar'):
+                scanlines = self.theme_manager.get_scanline_pattern(opacity=0.04)
+                self.sidebar.setStyleSheet(self.theme_manager.apply_tokens(f"""
+                    QFrame#sidebar {{
+                        background-color: @bg_sec;
+                        border-right: 1px solid @border;
+                        {scanlines}
+                    }}
+                """))
+            
+            # 0.1 Refresco de Settings View (Si existe y es SettingsDialog)
+            if hasattr(self, 'view_settings') and hasattr(self.view_settings, 'refresh_theme'):
+                self.view_settings.refresh_theme()
 
-        # 2. Refresco de Layout: Forzar re-pintado de contenedores principales
-        if hasattr(self, 'identity_banner'): self.identity_banner.refresh_theme()
-        
-        # Polishing final para asegurar que QSS se aplique a todos
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
+            # 1. Refresco Nuclear: Buscar recursivamente cualquier widget con refresh_theme
+            from PyQt5.QtWidgets import QWidget
+            from src.presentation.widgets.vultrax_base_card import VultraxBaseCard
+            from src.presentation.widgets.dimmer_slider import DimmerSlider
+            
+            # 1. Refresco Táctico: Tarjetas y Componentes Vultrax
+            for card in self.findChildren(VultraxBaseCard):
+                if hasattr(card, 'refresh_styles'):
+                    try: card.refresh_styles()
+                    except Exception: pass
+                    
+            for widget in self.findChildren(DimmerSlider):
+                 if hasattr(widget, 'refresh_styles'):
+                    try: widget.refresh_styles()
+                    except Exception: pass
+    
+            # 2. Refresco General Legacy
+            for widget in self.findChildren(QWidget):
+                if hasattr(widget, 'refresh_theme') and callable(widget.refresh_theme):
+                    try: 
+                        widget.refresh_theme()
+                    except Exception as e: 
+                        logger.debug(f"Silent skip refresh on {widget.__class__.__name__}: {e}")
+    
+            # 2. Refresco de Layout: Forzar re-pintado de contenedores principales
+            if hasattr(self, 'identity_banner'): self.identity_banner.refresh_theme()
+            
+            # Polishing final para asegurar que QSS se aplique a todos
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.update()
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh widget themes: {e}")
 
     def _on_repair_vault_dashboard(self):
         """Lanza el menú avanzado de Integridad y Herramientas de Recuperación."""
@@ -1377,5 +1456,19 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         except Exception as e:
             logger.debug(f"Final logout heartbeat failed: {e}")
         
+        
         logger.info("Vault closed correctly.")
-        event.accept()
+
+    def _apply_root_background(self):
+        """
+        Dynamically applies the root background color from the current theme.
+        Crucial for preventing the 'Disaster' where background sticks to old theme.
+        """
+        try:
+            colors = self.theme_manager.get_theme_colors()
+            bg_color = colors.get('bg', '#050505')
+            # Target DashboardView explicitly but safely to set the ROOT background
+            self.setStyleSheet(f"DashboardView {{ background-color: {bg_color}; }}")
+            logger.info(f"DashboardView: Root background updated to {bg_color}")
+        except Exception as e:
+            logger.error(f"Failed to apply root background: {e}")

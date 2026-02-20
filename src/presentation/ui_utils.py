@@ -14,18 +14,11 @@ class PremiumMessage:
     
     @staticmethod
     def _create_base(parent, title, text, icon_emoji, accent_key="primary"):
-        # FALLBACK LEGACY: Si alguien llama a _create_base directo, usamos el Toast system
-        # Mapeo de iconos a colores
-        color_map = {
-            "primary": "#06b6d4",
-            "success": "#10b981", 
-            "warning": "#f59e0b",
-            "danger": "#ef4444",
-            "secondary": "#64748b"
-        }
-        accent = color_map.get(accent_key, "#06b6d4")
+        theme = ThemeManager()
+        colors = theme.get_theme_colors()
+        accent = colors.get(accent_key, "#06b6d4")
         Notifications.show_toast(parent, title, text, icon_emoji, accent)
-        # Retornamos un objeto dummy compatible con exec_() para no romper llamadas encadenadas viejas
+        
         class DummyMsg:
             def exec_(self): pass
             def setStandardButtons(self, _): pass
@@ -37,23 +30,35 @@ class PremiumMessage:
 
     @staticmethod
     def warning(parent, title, text, duration=8000):
-        Notifications.show_toast(parent, title, text, "⚠️", "#f59e0b", duration)
+        theme = ThemeManager()
+        colors = theme.get_theme_colors()
+        col = colors.get("warning", "#f59e0b")
+        Notifications.show_toast(parent, title, text, "⚠️", col, duration)
 
     @staticmethod
     def info(parent, title, text, duration=6000):
-        Notifications.show_toast(parent, title, text, "ℹ️", "#06b6d4", duration)
+        theme = ThemeManager()
+        colors = theme.get_theme_colors()
+        col = colors.get("info", colors.get("primary", "#3b82f6"))
+        Notifications.show_toast(parent, title, text, "ℹ️", col, duration)
 
     information = info
 
     @staticmethod
     def success(parent, title, text, duration=6000):
-        Notifications.show_toast(parent, title, text, "✅", "#10b981", duration)
+        theme = ThemeManager()
+        colors = theme.get_theme_colors()
+        col = colors.get("success", "#10b981")
+        Notifications.show_toast(parent, title, text, "✅", col, duration)
 
     @staticmethod
     def error(parent, title, text, duration=10000):
         if not text:
             text = "Se ha producido un error inesperado sin mensaje detallado."
-        Notifications.show_toast(parent, title, text, "❌", "#ef4444", duration)
+        theme = ThemeManager()
+        colors = theme.get_theme_colors()
+        col = colors.get("danger", "#ef4444")
+        Notifications.show_toast(parent, title, text, "❌", col, duration)
 
     # Alias for critical -> error (Backward compatibility)
     critical = error

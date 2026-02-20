@@ -108,10 +108,13 @@ class DashboardActions(DashboardVaultActions, DashboardSyncActions, DashboardIOA
         Sincroniza con SQLite, Supabase y QSettings con feedback al usuario.
         """
         if not hasattr(self, 'txt_company_name'): return
+        if getattr(self, 'user_role', 'user').lower() != 'admin':
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.error(self, "Acceso Denegado", "Solo el administrador puede cambiar la identidad de la bóveda.")
+            return
         
-        new_name = self.txt_company_name.text().strip().upper()
         if not new_name:
-            new_name = "IT SECURITY"
+            new_name = "It Security" # [UNIFIED] Matching Sentence Case
             self.txt_company_name.setText(new_name)
 
         try:
@@ -146,12 +149,59 @@ class DashboardActions(DashboardVaultActions, DashboardSyncActions, DashboardIOA
             logger.error(f"Error guardando nombre de compañía: {e}")
             from src.presentation.ui_utils import PremiumMessage
             PremiumMessage.error(self, "Error de Guardado", "No se pudo actualizar el nombre en la base de datos.")
+        finally:
+            # Revert to read-only state (Preservando estilo de bordes)
+            if hasattr(self, 'txt_company_name'):
+                self.txt_company_name.setReadOnly(True)
+                self.txt_company_name.setStyleSheet(self.theme.apply_tokens("""
+                    QLineEdit#settings_input_branding {
+                        background: @ghost_white_5;
+                        border: 1px solid @border;
+                        border-radius: 6px;
+                        padding: 6px 12px;
+                        color: @text_dim;
+                        font-family: @font-family-main;
+                        font-size: 11px;
+                        font-weight: 500;
+                    }
+                """))
+            if hasattr(self, 'btn_mod_company'):
+                self.btn_mod_company.setEnabled(True)
+                self.btn_mod_company.setText(MESSAGES.SETTINGS.BTN_MOD) # [UNIFIED] Sentence Case
+
+    def _enable_company_name_edit(self):
+        """Habilita la edición del nombre de la compañía/bóveda."""
+        if not hasattr(self, 'txt_company_name'): return
+        if getattr(self, 'user_role', 'user').lower() != 'admin': return
+        
+        self.txt_company_name.setReadOnly(False)
+        self.txt_company_name.setFocus()
+        self.txt_company_name.setStyleSheet(self.theme.apply_tokens("""
+            QLineEdit#settings_input_branding {
+                background: @ghost_primary_10;
+                border: 1px solid @primary;
+                border-radius: 6px;
+                padding: 6px 12px;
+                color: @text;
+                font-family: @font-family-main;
+                font-size: 11px;
+                font-weight: 600;
+            }
+        """))
+        
+        if hasattr(self, 'btn_mod_company'):
+            self.btn_mod_company.setEnabled(False)
+            self.btn_mod_company.setText("Editando...") # [UNIFIED] Sentence Case
 
     def _on_change_logo(self):
         """
         Permite al usuario subir un logo corporativo (Raster o Vectorial .SVG).
         Aplica renderizado de alta calidad para archivos vectoriales.
         """
+        if getattr(self, 'user_role', 'user').lower() != 'admin':
+            from src.presentation.ui_utils import PremiumMessage
+            PremiumMessage.error(self, "Acceso Denegado", "Solo el administrador puede actualizar el logo corporativo.")
+            return
         file_path, _ = QFileDialog.getOpenFileName(
             self, 
             MESSAGES.SETTINGS.BTN_CHANGE_LOGO, 

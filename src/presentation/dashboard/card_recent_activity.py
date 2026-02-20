@@ -7,7 +7,7 @@ from src.domain.messages import MESSAGES
 class RecentActivityCard(VultraxBaseCard):
     def __init__(self, current_role="user", parent=None):
         super().__init__(parent)
-        self.setFixedHeight(300)
+        self.setFixedHeight(310)
         self.setProperty("depth", "dashboard")
         self.current_role = current_role
         self._setup_ui()
@@ -54,7 +54,9 @@ class RecentActivityCard(VultraxBaseCard):
         for b in self.filters:
             b.setCursor(Qt.PointingHandCursor)
             b.setFixedHeight(24)
-            b.setObjectName("activity_filter_btn")
+            # [ATOMIC STANDARDIZATION] Use specific ID for dimming support
+            b.setObjectName("ai_action_btn") 
+            b.setProperty("ghost", "true") # Default to ghost style for dimmer compatibility
             pulse_h.addWidget(b)
             self.filter_group.addButton(b)
 

@@ -11,6 +11,7 @@ from src.domain.messages import MESSAGES
 from src.presentation.ui_utils import PremiumMessage
 from src.presentation.theme_manager import ThemeManager
 from src.presentation.widgets.glass_card import GlassCard
+from src.presentation.widgets.tactical_atoms import TacticalLabel, TacticalValue
 from src.presentation.widgets.circular_gauge import CircularGauge
 from src.presentation.widgets.identity_banner import VaultIdentityBanner
 from src.presentation.widgets.radar_status import RadarStatusWidget
@@ -34,6 +35,7 @@ from src.presentation.dashboard.card_recent_activity import RecentActivityCard
 from src.presentation.dashboard.card_ai_guardian import AIGuardianCard
 from src.presentation.dashboard.card_threats_monitoring import ThreatsMonitoringCard
 from src.presentation.sessions_dialog import SessionsDialog
+from src.presentation.widgets.dimmer_slider import DimmerSlider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,9 +89,8 @@ class DashboardUI:
         
         brand_card.setStyleSheet(self.theme.apply_tokens("""
             QFrame#brand_header {
-                background: @ghost_white_5;
-                border-radius: @border-radius-main;
-                border: 1px solid @border;
+                background: transparent;
+                border: none;
                 margin: 0 15px 15px 15px;
             }
         """))
@@ -140,13 +141,7 @@ class DashboardUI:
                 }
             """))
 
-            def on_nav():
-                self.main_stack.setCurrentIndex(idx)
-                if idx == 5: # Settings Page
-                    self._load_generator_settings()
-                    self._load_ui_settings()
-            btn.clicked.connect(on_nav)
-            self.nav_group.addButton(btn); sidebar_layout.addWidget(btn); return btn
+            self.nav_group.addButton(btn, idx); sidebar_layout.addWidget(btn); return btn
 
         self.btn_nav_dashboard = add_nav("DASHBOARD", "📊", 0)
         self.btn_nav_vault = add_nav("VAULT", "🔐", 1)
@@ -154,6 +149,17 @@ class DashboardUI:
         self.btn_nav_activity = add_nav("ACTIVITY LOG", "📜", 3)
         self.btn_nav_users = add_nav("ADMIN PANEL", "👥", 4)
         self.btn_nav_settings = add_nav("SETTINGS", "⚙️", 5)
+        
+        # [SENIOR STYLE] Sidebar Base Styling with Hifi-Ops Scanline Texture
+        # Applied cleanly to the sidebar frame
+        scanlines = self.theme.get_scanline_pattern(opacity=0.04)
+        self.sidebar.setStyleSheet(self.theme.apply_tokens(f"""
+            QFrame#sidebar {{
+                background-color: @bg_sec;
+                border-right: 1px solid @border;
+                {scanlines}
+            }}
+        """))
         
         sidebar_layout.addStretch()
         
@@ -163,7 +169,7 @@ class DashboardUI:
         # Removed local identity_banner creation from here
         
         u_card = QFrame(); u_layout = QVBoxLayout(u_card); u_layout.setContentsMargins(15, 20, 15, 10); u_layout.setSpacing(10)
-        u_card.setStyleSheet(self.theme.apply_tokens("background: @ghost_white_5; border-radius: @border-radius-main; border-top: 1px solid @ghost_white_10;"))
+        u_card.setStyleSheet(self.theme.apply_tokens("background: transparent; border: none;"))
         
         self.lbl_user_info = QLabel(f"👤 {self.current_username.upper()}")
         self.lbl_user_info.setStyleSheet(self.theme.apply_tokens("color: @text; font-family: @font-family-main; font-size: 13px; font-weight: 600; letter-spacing: 1px;"))
@@ -213,7 +219,7 @@ class DashboardUI:
         self.status_sqlite.setToolTip(MESSAGES.TACTICAL.TOOLTIP_SQLITE)
 
         # --- HUD: UNIFIED TOP BAR (SEARCH + TELEMETRY) ---
-        self.header = QFrame(); self.header.setObjectName("dashboard_header"); self.header.setFixedHeight(140)
+        self.header = QFrame(); self.header.setObjectName("dashboard_header"); self.header.setFixedHeight(100)
         self.header.setStyleSheet(self.theme.apply_tokens("""
             #dashboard_header {
                 background: @bg_sec_60;
@@ -234,8 +240,8 @@ class DashboardUI:
         
         # Main Header Layout (Vertical)
         header_v_layout = QVBoxLayout(self.header)
-        header_v_layout.setContentsMargins(30, 20, 30, 20)
-        header_v_layout.setSpacing(10)
+        header_v_layout.setContentsMargins(30, 10, 30, 10)
+        header_v_layout.setSpacing(2)
         # --- ROW 1: STATUS BADGE + SEARCH + TELEMETRY ---
         row1_layout = QHBoxLayout()
         row1_layout.setContentsMargins(0, 0, 0, 0)
@@ -247,7 +253,7 @@ class DashboardUI:
 
         # --- ROW 2: ENLARGED VAULT IDENTITY ---
         row2_layout = QHBoxLayout()
-        row2_layout.setContentsMargins(0, 5, 0, 0)
+        row2_layout.setContentsMargins(0, 0, 0, 0)
         row2_layout.setSpacing(15)
 
         from src.infrastructure.config.path_manager import PathManager
@@ -257,7 +263,7 @@ class DashboardUI:
 
         self.lbl_v_icon = QLabel()
         if actual_logo.exists():
-            pix = QPixmap(str(actual_logo)).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(actual_logo)).scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.lbl_v_icon.setPixmap(pix)
         else:
             self.lbl_v_icon.setText("🛡️")
@@ -279,7 +285,7 @@ class DashboardUI:
             db_name = settings.value("company_name", "IT SECURITY")
             
         self.lbl_v_name.setText(str(db_name).upper())
-        self.lbl_v_name.setStyleSheet(self.theme.apply_tokens("color: @text; font-size: 48px; font-weight: 900; letter-spacing: 3px; background: transparent; padding-bottom: 5px; font-family: @font-family-main;"))
+        self.lbl_v_name.setStyleSheet(self.theme.apply_tokens("color: @text; font-size: 32px; font-weight: 900; letter-spacing: 3px; background: transparent; padding-bottom: 2px; font-family: @font-family-main;"))
         
         row2_layout.addWidget(self.lbl_v_icon)
         row2_layout.addWidget(self.lbl_v_name)
@@ -363,6 +369,11 @@ class DashboardUI:
         sb_wrap.addWidget(self.btn_ghost_toggle)
         sidebar_layout.addLayout(sb_wrap)
         
+        # --- NEW: DIMMER CONTROL ---
+        self.dimmer_ctrl = DimmerSlider()
+        self.dimmer_ctrl.opacity_changed.connect(self._on_dimmer_changed)
+        sidebar_layout.addWidget(self.dimmer_ctrl)
+        
         # STACK & VIEWS
         self.main_stack = QStackedWidget()
         self.view_dashboard = self._module_dashboard() 
@@ -386,7 +397,7 @@ class DashboardUI:
         scroll = QScrollArea(page); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame); scroll.setObjectName("dashboard_scroll")
         container = QWidget()
         container.setObjectName("bento_container")
-        layout = QVBoxLayout(container); layout.setContentsMargins(35, 5, 35, 5); layout.setSpacing(4)
+        layout = QVBoxLayout(container); layout.setContentsMargins(35, 0, 35, 0); layout.setSpacing(2)
  
         # (Identity Banner removed from here, now it is Global Top Header in _build_ui)
 
@@ -411,7 +422,7 @@ class DashboardUI:
         
         # --- BENTO GRID (VULTRAX 12-COLUMN ARCHITECTURE) ---
         grid = QGridLayout()
-        grid.setSpacing(18) # Gutter: 18 px (Reduced from 24 for compact view)
+        grid.setSpacing(10) # Gutter: 10 px (Reduced from 18 for compact view)
         
         # Standard 12-Column Stretch
         for i in range(12):
@@ -471,7 +482,7 @@ class DashboardUI:
         # 2. INFO TILES (Cyber-Ops Metrics)
         def mk_info_tile(title_key, icon, color):
             c = GlassCard()
-            c.setFixedHeight(85) # Taller for better spacing
+            c.setFixedHeight(75) # Balanced for vertical space
             c.setProperty("depth", "dashboard")
             c.setObjectName("premium_info_tile")
             
@@ -487,9 +498,11 @@ class DashboardUI:
             ic.setObjectName("tile_icon_glow")
             ic.setStyleSheet(f"font-size: 18px;")
             
-            tit = QLabel(MESSAGES.INFO_TILES.get(title_key, title_key))
+            # [ATOMIC REFACTOR] Use TacticalLabel for standardized font styling
+            tit = TacticalLabel(MESSAGES.INFO_TILES.get(title_key, title_key), token="label")
             tit.setObjectName("tile_title_tactical")
-            tit.setStyleSheet(self.theme.apply_tokens(f"color: @text_dim; font-family: @font-family-main; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; opacity: 0.6;"))
+            # Removed inline style. Font is now controlled by ThemeManager.
+            # Color/Opacity should be handled by QSS #tile_title_tactical
             
             hl.addWidget(ic)
             hl.addWidget(tit)
@@ -501,12 +514,21 @@ class DashboardUI:
             c.title_key = title_key
             
             # Large Value
-            val = QLabel("0")
+            # [ATOMIC REFACTOR] Use TacticalValue for standardized metric display
+            val = TacticalValue("0", token="display")
             val.setObjectName("info_tile_value")
-            val.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            val.setStyleSheet(self.theme.apply_tokens(f"color: @text; font-family: @font-family-main; font-size: 24px; font-weight: 800;"))
+            # Removed inline setStyleSheet to allow global QSS (and Dimmer) to control color.
+            # dashboard.qss handles #info_tile_value
             
-            # Subtle Progress/Decoration underline
+            # Subtle Progress/Decoration underline (Keep inline since it needs specific color)
+            # But we should apply dimmer to this color too if possible, OR move to QSS with dynamic ID?
+            # For now, let's just make sure the line adapts.
+            # We can use QSS for the generic line, but the gradient color is variable.
+            # We'll use apply_tokens which DOES respond to dimmer (on creation/update),
+            # BUT since this is created once, it won't dim dynamically unless we refresh it.
+            # However, the user specifically mentioned "LETTERS OR LABELS".
+            # The underline is minor. Let's focus on the text.
+            
             line = QFrame()
             line.setFixedHeight(2)
             line.setStyleSheet(f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {color}, stop:1 transparent); border-radius: 1px;")
@@ -521,11 +543,17 @@ class DashboardUI:
 
         if self.current_role == "admin":
             # ADMIN INFO TILES (Global System Metrics)
-            self.card_admin, self.stat_admin_val = mk_info_tile("ADMIN SECRETS", "🏢", "#3b82f6")
-            self.card_others, self.stat_others_val = mk_info_tile("USERS SECRETS", "👥", "#0ea5e9")
-            self.card_users, self.stat_users_val = mk_info_tile("TOTAL USERS", "👤", "#06b6d4")
-            self.card_sessions, self.stat_sessions_val = mk_info_tile("SESSIONS", "⚡", "#8b5cf6")
-            self.card_logs, self.stat_logs_val = mk_info_tile("LOGS", "📜", "#f59e0b")
+            # Fix: Pass TOKEN KEYS instead of HEX. The mk_info_tile function will need to resolve them using ThemeManager
+            # But since mk_info_tile is inline/local helper (or imported), we need to check its definition.
+            # Assuming we modify the calls here to pass dynamic colors from self.theme.get_theme_colors()
+            
+            colors = self.theme.get_theme_colors()
+            
+            self.card_admin, self.stat_admin_val = mk_info_tile("ADMIN SECRETS", "🏢", colors.get("primary", "#3b82f6"))
+            self.card_others, self.stat_others_val = mk_info_tile("USERS SECRETS", "👥", colors.get("info", "#0ea5e9"))
+            self.card_users, self.stat_users_val = mk_info_tile("TOTAL USERS", "👤", colors.get("secondary", "#06b6d4"))
+            self.card_sessions, self.stat_sessions_val = mk_info_tile("SESSIONS", "⚡", colors.get("ai", "#8b5cf6"))
+            self.card_logs, self.stat_logs_val = mk_info_tile("LOGS", "📜", colors.get("warning", "#f59e0b"))
             
             tiles_layout = QHBoxLayout(); tiles_layout.setSpacing(15)
             tiles_layout.addWidget(self.card_admin)
@@ -535,9 +563,11 @@ class DashboardUI:
             tiles_layout.addWidget(self.card_logs)
         else:
             # USER INFO TILES (Personal Metrics)
-            self.card_total, self.stat_total_val = mk_info_tile("LBL_TOTAL", "🔑", "#3b82f6")
-            self.card_weak, self.stat_weak_val = mk_info_tile("LBL_WEAK", "⚠️", "#ef4444")
-            self.card_age, self.stat_age_val = mk_info_tile("LBL_AGE", "📅", "#f59e0b")
+            colors = self.theme.get_theme_colors()
+            
+            self.card_total, self.stat_total_val = mk_info_tile("LBL_TOTAL", "🔑", colors.get("primary", "#3b82f6"))
+            self.card_weak, self.stat_weak_val = mk_info_tile("LBL_WEAK", "⚠️", colors.get("danger", "#ef4444"))
+            self.card_age, self.stat_age_val = mk_info_tile("LBL_AGE", "📅", colors.get("warning", "#f59e0b"))
 
             tiles_layout = QHBoxLayout(); tiles_layout.setSpacing(25)
             tiles_layout.addWidget(self.card_total); tiles_layout.addWidget(self.card_weak); tiles_layout.addWidget(self.card_age)
@@ -588,7 +618,7 @@ class DashboardUI:
         grid.addWidget(self.card_ai_guardian, 1, 6, 1, 6) # 6 cols (Balanced 50/50 with Overview)
 
         # 5. QUICK ACTIONS
-        self.actions_card = GlassCard(); self.actions_card.setFixedHeight(84); self.actions_card.setProperty("depth", "dashboard")
+        self.actions_card = GlassCard(); self.actions_card.setFixedHeight(76); self.actions_card.setProperty("depth", "dashboard")
         al = QHBoxLayout(self.actions_card); al.setContentsMargins(20,0,20,0); al.setSpacing(12)
         
         def mk_quick_btn(icon, text_key, col_key):
@@ -826,7 +856,7 @@ class DashboardUI:
                     w.refresh_styles()
                 except:
                     pass
-
+                    
             w.style().unpolish(w)
             w.style().polish(w)
             w.update()
@@ -846,13 +876,41 @@ class DashboardUI:
         # Refrescar la ventana principal y los stacks
         if hasattr(self, 'main_stack'):
             self.main_stack.update()
-            # Also refresh current widget explicitly
             if self.main_stack.currentWidget():
                 self.main_stack.currentWidget().update()
         
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
+
+    def _on_dimmer_changed(self, opacity):
+        """Handle global opacity changes from the DimmerSlider."""
+        from src.presentation.theme_manager import ThemeManager
+        ThemeManager.set_global_opacity(opacity)
+        
+        # Trigger re-styling across the app
+        self.view_dashboard.style().unpolish(self.view_dashboard)
+        self.view_dashboard.style().polish(self.view_dashboard)
+        
+        # Force refresh of custom painter-based widgets
+        # 1. System Overview & Health
+        if hasattr(self, 'card_system_overview'): self.card_system_overview.refresh_styles()
+        if hasattr(self, 'card_system_health'): self.card_system_health.refresh_styles()
+        
+        # 2. Auth & Password Health
+        if hasattr(self, 'card_auth'): self.card_auth.refresh_styles()
+        if hasattr(self, 'card_health'): self.card_health.refresh_styles()
+        
+        # 3. Analytics & AI
+        if hasattr(self, 'card_analytics'): self.card_analytics.refresh_styles() # Security Watch
+        if hasattr(self, 'card_ai_guardian'): self.card_ai_guardian.refresh_styles()
+        
+        # 4. Other Modules (if instantiated)
+        if hasattr(self, 'card_threats'): self.card_threats.refresh_styles()
+        if hasattr(self, 'card_recent'): self.card_recent.refresh_styles()
+        
+        # Update the theme globally to ensure QSS tokens are recalculated
+        self.theme.apply_app_theme(self.window())
 
     def _module_vault(self):
         page = QWidget(); l = QVBoxLayout(page); l.setContentsMargins(35, 25, 35, 35); l.setSpacing(20)
@@ -1185,6 +1243,7 @@ class DashboardUI:
         branding_l.setContentsMargins(30, 25, 30, 25)
         branding_l.setSpacing(18)
 
+        # --- Row 1: Logo & Upload ---
         brand_row = QHBoxLayout()
         brand_row.setSpacing(15)
         brand_info = QVBoxLayout()
@@ -1196,7 +1255,49 @@ class DashboardUI:
         brand_info.addWidget(brand_title)
         brand_info.addWidget(brand_desc)
 
-        # --- Dynamic Company Name Field ---
+        # Logo Preview Container
+        preview_container = QFrame()
+        preview_container.setFixedSize(60, 60)
+        preview_container.setObjectName("logo_preview_container")
+        preview_container.setStyleSheet("background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;")
+        
+        preview_layout = QVBoxLayout(preview_container)
+        preview_layout.setContentsMargins(2, 2, 2, 2)
+        
+        self.lbl_logo_preview = QLabel()
+        self.lbl_logo_preview.setAlignment(Qt.AlignCenter)
+        
+        from src.infrastructure.config.path_manager import PathManager
+        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
+        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
+        
+        actual_logo = custom_logo if custom_logo.exists() else default_logo
+        if actual_logo.exists():
+            pix = QPixmap(str(actual_logo)).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.lbl_logo_preview.setPixmap(pix)
+        else:
+            self.lbl_logo_preview.setText("🛡️")
+            self.lbl_logo_preview.setStyleSheet("font-size: 20px; color: @text_dim;")
+            
+        preview_layout.addWidget(self.lbl_logo_preview)
+
+        # Permisos de Administrador para Branding
+        is_admin = getattr(self, 'user_role', 'user').lower() == 'admin'
+
+        self.btn_change_logo = QPushButton(MESSAGES.SETTINGS.BTN_CHANGE_LOGO) # [UNIFIED] Sentence Case
+        self.btn_change_logo.setCursor(Qt.PointingHandCursor)
+        self.btn_change_logo.setObjectName("btn_settings_action")
+        self.btn_change_logo.setFixedWidth(150)
+        self.btn_change_logo.setVisible(is_admin) # [SECURITY] Solo Admin ve este botón
+        
+        brand_row.addLayout(brand_info)
+        brand_row.addStretch()
+        brand_row.addWidget(preview_container)
+        brand_row.addSpacing(10)
+        brand_row.addWidget(self.btn_change_logo)
+        branding_l.addLayout(brand_row)
+
+        # --- Row 2: Company Name (Standardized to 200px) ---
         current_company = None
         if hasattr(self, 'sm') and self.sm:
             current_company = self.sm.get_meta("instance_name")
@@ -1214,59 +1315,32 @@ class DashboardUI:
         
         self.txt_company_name = QLineEdit(current_company)
         self.txt_company_name.setObjectName("settings_input_branding")
-        self.txt_company_name.setFixedWidth(200)
+        self.txt_company_name.setFixedWidth(200) # [UNIFIED] Matches ComboBoxes
+        self.txt_company_name.setReadOnly(True)
         self.txt_company_name.setStyleSheet(self.theme.apply_tokens("""
             QLineEdit#settings_input_branding {
                 background: @ghost_white_5;
                 border: 1px solid @border;
                 border-radius: 6px;
-                padding: 4px 10px;
-                color: @text;
+                padding: 6px 12px;
+                color: @text_dim;
                 font-family: @font-family-main;
+                font-size: 11px;
+                font-weight: 500;
             }
         """))
         
+        self.btn_mod_company = QPushButton(MESSAGES.SETTINGS.BTN_MOD) # [UNIFIED] Sentence Case
+        self.btn_mod_company.setObjectName("btn_settings_action")
+        self.btn_mod_company.setFixedWidth(150)
+        self.btn_mod_company.setCursor(Qt.PointingHandCursor)
+        self.btn_mod_company.setVisible(is_admin) # [SECURITY] Solo Admin ve este botón
+        
         company_row.addWidget(lbl_comp_name)
-        company_row.addWidget(self.txt_company_name)
         company_row.addStretch()
-        
-        # Logo Preview Container
-        preview_container = QFrame()
-        preview_container.setFixedSize(60, 60)
-        preview_container.setObjectName("logo_preview_container")
-        preview_container.setStyleSheet("background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;")
-        
-        preview_layout = QVBoxLayout(preview_container)
-        preview_layout.setContentsMargins(2, 2, 2, 2)
-        
-        self.lbl_logo_preview = QLabel()
-        self.lbl_logo_preview.setAlignment(Qt.AlignCenter)
-        
-        # Load current logo for preview
-        from src.infrastructure.config.path_manager import PathManager
-        custom_logo = PathManager.DATA_DIR / "custom_logo.png"
-        default_logo = PathManager.ASSETS_DIR / "logo_v2.png" if (PathManager.ASSETS_DIR / "logo_v2.png").exists() else (PathManager.BUNDLE_DIR / "logo_v2.png")
-        
-        actual_logo = custom_logo if custom_logo.exists() else default_logo
-        if actual_logo.exists():
-            pix = QPixmap(str(actual_logo)).scaled(50, 50, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.lbl_logo_preview.setPixmap(pix)
-        else:
-            self.lbl_logo_preview.setText("🛡️")
-            self.lbl_logo_preview.setStyleSheet("font-size: 20px; color: @text_dim;")
-            
-        preview_layout.addWidget(self.lbl_logo_preview)
-
-        self.btn_change_logo = QPushButton(MESSAGES.SETTINGS.BTN_CHANGE_LOGO)
-        self.btn_change_logo.setCursor(Qt.PointingHandCursor)
-        self.btn_change_logo.setObjectName("btn_settings_action")
-        self.btn_change_logo.setFixedWidth(150)
-        
-        brand_row.addLayout(brand_info)
-        brand_row.addStretch()
-        brand_row.addWidget(preview_container)
-        brand_row.addWidget(self.btn_change_logo)
-        branding_l.addLayout(brand_row)
+        company_row.addWidget(self.txt_company_name)
+        company_row.addSpacing(10)
+        company_row.addWidget(self.btn_mod_company)
         branding_l.addLayout(company_row)
 
         l.addWidget(branding_card)
@@ -1297,7 +1371,7 @@ class DashboardUI:
         master_desc.setObjectName("settings_desc")
         master_info.addWidget(master_title)
         master_info.addWidget(master_desc)
-        self.btn_change_pwd_real = QPushButton(MESSAGES.SETTINGS.BTN_MOD)
+        self.btn_change_pwd_real = QPushButton(MESSAGES.SETTINGS.BTN_MOD) # [UNIFIED]
         self.btn_change_pwd_real.setCursor(Qt.PointingHandCursor)
         self.btn_change_pwd_real.setObjectName("btn_settings_action")
         self.btn_change_pwd_real.setFixedWidth(150)
@@ -1317,7 +1391,7 @@ class DashboardUI:
         vault_desc.setObjectName("settings_desc")
         vault_info.addWidget(vault_title)
         vault_info.addWidget(vault_desc)
-        self.btn_repair_vault_dashboard = QPushButton(MESSAGES.SETTINGS.BTN_REP)
+        self.btn_repair_vault_dashboard = QPushButton(MESSAGES.SETTINGS.BTN_REP) # [UNIFIED]
         self.btn_repair_vault_dashboard.setCursor(Qt.PointingHandCursor)
         self.btn_repair_vault_dashboard.setObjectName("btn_settings_repair")
         self.btn_repair_vault_dashboard.setFixedWidth(150)

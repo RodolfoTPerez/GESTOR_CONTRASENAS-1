@@ -21,15 +21,26 @@ class PulseBar(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         colors = self.theme.get_theme_colors()
         
+        # [SENIOR FIX] respect global opacity
+        dimmer = getattr(self.theme, '_GLOBAL_OPACITY', 1.0)
+        
         # 1. Label
         label_color = QColor(colors["text_dim"])
         is_ghost = self.property("ghost") == "true"
-        if is_ghost: label_color.setAlpha(178) # 70% HUD Header (Senior: Increased from 30%)
+        if is_ghost: 
+            label_color.setAlpha(int(178 * dimmer)) # 70% HUD Header
+        else:
+            label_color.setAlpha(int(255 * dimmer))
         
         painter.setPen(label_color)
-        font = QFont("Segoe UI", 9)
+        
+        # [ATOMIC REFACTOR] Use Centralized Font
+        # Old: font = QFont("Segoe UI", 9)
+        font = self.theme.get_font("label")
         painter.setFont(font)
-        painter.drawText(0, 18, self.label_text)
+        
+        # Vertical centering adjustment based on font stats could be added here
+        painter.drawText(0, 19, self.label_text) # Adjusted Y slightly for new font alignment
         
         # 2. Bar Background (Theme Aware)
         bar_x = 90
@@ -40,7 +51,7 @@ class PulseBar(QWidget):
         painter.setPen(Qt.NoPen)
         # Use border color with alpha for track background
         bg_col = QColor(colors["border"])
-        bg_col.setAlpha(40)
+        bg_col.setAlpha(int(40 * dimmer))
         painter.setBrush(QBrush(bg_col))
         painter.drawRoundedRect(bar_x, bar_y, bar_w, bar_h, 5, 5)
         
@@ -48,10 +59,9 @@ class PulseBar(QWidget):
         fill_w = int(bar_w * (self.value / 100.0))
         if fill_w > 0:
             # Color logic using Theme Variables
-            is_ghost = self.property("ghost") == "true"
             if self.value > 80:
                 c1 = colors["success"]
-                c2 = colors["success"] # Or slightly lighter calc? Keep simple for now
+                c2 = colors["success"] 
             elif self.value > 40:
                 c1 = colors["primary"]
                 c2 = colors["info"]
@@ -60,15 +70,18 @@ class PulseBar(QWidget):
                 c2 = colors["danger"]
                 
             c1_q, c2_q = QColor(c1), QColor(c2)
-            # Add slight variation for c2 to simulate gradient if needed, or stick to flat theme
             c2_q = c2_q.lighter(110)
  
             if is_ghost: 
                 # Fills use GLASSY alpha
                 is_urgent = (c1_q.red() > 200) # Check urgency based on the first color
-                alpha = int(0.40 * 255) if is_urgent else int(0.20 * 255) # Senior: Increased from 0.15/0.08
+                alpha = int(0.40 * 255 * dimmer) if is_urgent else int(0.20 * 255 * dimmer) 
                 c1_q.setAlpha(alpha)
                 c2_q.setAlpha(alpha)
+            else:
+                # Normal mode also needs dimmer!
+                c1_q.setAlpha(int(255 * dimmer))
+                c2_q.setAlpha(int(255 * dimmer))
  
             gradient = QLinearGradient(bar_x, 0, bar_x + fill_w, 0)
             gradient.setColorAt(0, c1_q)
@@ -80,9 +93,9 @@ class PulseBar(QWidget):
             # 4. Neon Glow (Inner) - Border (80% for Ghost)
             pen_color = QColor(c2) # Use the second color for the border
             if is_ghost:
-                pen_color.setAlpha(204) # Senior: Increased from 60%
+                pen_color.setAlpha(int(204 * dimmer)) 
             else:
-                pen_color.setAlpha(255) # Solid for non-ghost mode
+                pen_color.setAlpha(int(255 * dimmer)) # Solid for non-ghost mode
             
             painter.setPen(QPen(pen_color, 1))
             painter.setBrush(Qt.NoBrush)

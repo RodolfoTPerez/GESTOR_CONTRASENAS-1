@@ -10,6 +10,7 @@ import logging
 import hashlib
 from typing import Optional, Dict, Any, Tuple
 from supabase import Client
+from config.config import AUTH_MAX_ATTEMPTS, AUTH_WINDOW_SECONDS
 from src.infrastructure.crypto_engine import CryptoEngine, rate_limit
 from src.infrastructure.security.device_fingerprint import get_hwid
 
@@ -161,7 +162,8 @@ class AuthManager:
     
     # ===== AUTHENTICATION =====
     
-    @rate_limit(max_attempts=5, window=60)
+    from config.config import AUTH_MAX_ATTEMPTS, AUTH_WINDOW_SECONDS
+    @rate_limit(max_attempts=AUTH_MAX_ATTEMPTS, window=AUTH_WINDOW_SECONDS)
     def check_local_login(self, username: str, password: str) -> bool:
         """
         Validate login using local database only.

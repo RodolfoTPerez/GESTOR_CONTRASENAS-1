@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QGraphicsOpacityEffect, QFrame, QApplication
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QPoint, QSize
 from PyQt5.QtGui import QColor, QFont
+from src.presentation.theme_manager import ThemeManager
 
 class ToastNotification(QWidget):
     """
@@ -8,10 +9,11 @@ class ToastNotification(QWidget):
     """
     def __init__(self, parent=None, title="", message="", icon="ℹ️", accent_color="#06b6d4", duration=3000):
         super().__init__(parent)
+        self.theme = ThemeManager()
+        
         # Banderas para que sea un overlay sin marco y siempre visible
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.SubWindow | Qt.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # self.setAttribute(Qt.WA_ShowWithoutActivation) # [FIX] Eliminado por error en algunas versiones de Qt
         
         self.accent_color = accent_color
         self.duration_ms = duration
@@ -20,23 +22,23 @@ class ToastNotification(QWidget):
         self.setMinimumWidth(400)
         self.setMaximumWidth(450)
         
-        # Estilo base del widget
-        self.setStyleSheet(f"""
+        # Estilo base del widget usando Tokens
+        self.setStyleSheet(self.theme.apply_tokens(f"""
             QWidget {{
                 background: transparent;
             }}
             QFrame#card {{
-                background-color: rgba(15, 23, 42, 0.95);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                background-color: @bg_dashboard_card;
+                border: 1px solid @border;
                 border-left: 4px solid {self.accent_color};
-                border-radius: 6px;
+                border-radius: @border-radius-main;
             }}
             QLabel {{
-                color: #e2e8f0;
+                color: @text;
                 background: transparent;
                 border: none;
             }}
-        """)
+        """))
         
         # Layout Principal
         self.main_layout = QHBoxLayout(self)

@@ -30,6 +30,19 @@ if "your-project-id" in os.getenv("SUPABASE_URL", ""):
 DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 
+# --- QUALITY & SECURITY CONSTANTS (Area 5 Refactoring) ---
+# Rate Limiting
+AUTH_MAX_ATTEMPTS = 5
+AUTH_WINDOW_SECONDS = 60
+
+# Session & Timeouts
+SESSION_SHORT_TIMEOUT = 300   # 5 min
+SESSION_LONG_TIMEOUT = 900    # 15 min
+
+# Security Levels
+SECURITY_LEVEL_DEFAULT = 0
+MAX_USERS_LIMIT = 5
+
 if DEBUG_MODE and ENVIRONMENT == "production":
     raise RuntimeError(
         "CRITICAL SECURITY RISK: DEBUG=True is enabled in a PRODUCTION environment. "

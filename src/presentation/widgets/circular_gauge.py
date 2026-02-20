@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, pyqtProperty, pyqtSignal
-from PyQt5.QtGui import QPainter, QPen, QColor, QFont
+from PyQt5.QtCore import Qt, pyqtProperty, pyqtSignal, QPointF, QRectF
+from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QRadialGradient, QBrush
 from src.presentation.theme_manager import ThemeManager
 
 class CircularGauge(QWidget):
@@ -39,14 +39,16 @@ class CircularGauge(QWidget):
 
     def paintEvent(self, event):
         colors = self.theme.get_theme_colors()
+        is_ghost = self.property("ghost") == "true"
+        dimmer = getattr(self.theme, '_GLOBAL_OPACITY', 1.0)
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         width = self.width()
         height = self.height()
-        margin = min(width, height) * 0.08
-        side = min(width, height) - margin
-        rect = self.rect()
+        side = min(width, height) * 0.85
+        center = QPointF(width / 2, height / 2)
         
         from PyQt5.QtCore import QRectF
         arc_rect = QRectF(
@@ -56,22 +58,38 @@ class CircularGauge(QWidget):
             side
         )
 
-        stroke_width = side * 0.09
-        font_size = int(side * 0.20)
+        stroke_width = side * 0.08
+        font_size = int(side * 0.22)
 
-        # 1. Background Ring
-        bg_color = QColor(colors["text_dim"])
-        bg_color.setAlpha(80) # Increased opacity
-        pen_bg = QPen(bg_color)
-        pen_bg.setWidthF(stroke_width)
-        pen_bg.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen_bg)
+        # 1. RADIAL BACKGROUND (Concave HUD Effect)
+        bg_grad = QRadialGradient(center, side / 2)
+        bg_col = QColor(colors.get("card_bg", "rgba(15, 23, 42, 0.4)"))
+        bg_col.setAlpha(int(40 * dimmer))
+        bg_grad.setColorAt(0, Qt.transparent)
+        bg_grad.setColorAt(1, bg_col)
         
-        inner_rect = arc_rect.adjusted(stroke_width/2, stroke_width/2, -stroke_width/2, -stroke_width/2)
-        painter.drawArc(inner_rect, 0, 360 * 16)
+        painter.setBrush(QBrush(bg_grad))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(center, side / 2 + 5, side / 2 + 5)
 
-        # 2. Dynamic Color (Professional)
-        is_ghost = self.property("ghost") == "true"
+        # 2. TACTICAL TICKS (Mechanical Detail)
+        tick_col = QColor(colors.get("text_dim", "#94a3b8"))
+        tick_col.setAlpha(int(80 * dimmer))
+        painter.setPen(QPen(tick_col, 1))
+        
+        for i in range(60):
+            angle = i * 6
+            painter.save()
+            painter.translate(center)
+            painter.rotate(angle)
+            length = 5 if i % 5 == 0 else 2
+            alpha = int(150 * dimmer) if i % 5 == 0 else int(60 * dimmer)
+            tick_col.setAlpha(alpha)
+            painter.setPen(QPen(tick_col, 1.2 if i % 5 == 0 else 0.8))
+            painter.drawLine(0, int(-side/2 - 2), 0, int(-side/2 - 2 - length))
+            painter.restore()
+
+        # 3. DYNAMIC COLOR SELECTION
         if self._value < 40: 
             color = QColor(colors["danger"])
         elif self._value < 75: 
@@ -79,68 +97,38 @@ class CircularGauge(QWidget):
         else: 
             color = QColor(colors["success"])
         
-        if is_ghost: 
-            # Fills use GLASSY alpha (HUD Standard)
-            is_urgent = (color.red() > 200)
-            alpha = int(0.15 * 255) if is_urgent else int(0.08 * 255)
-            color.setAlpha(alpha)
-
-        # 3. Progress Arc with SOFT Glow
+        # 4. MULTI-LAYERED NEON GLOW (HIFI-CORE)
+        inner_rect = arc_rect.adjusted(stroke_width/2, stroke_width/2, -stroke_width/2, -stroke_width/2)
         span_angle = int(-(self._value / 100.0) * 360 * 16)
-        
-        # Outer soft glow
-        glow_c1 = QColor(color)
-        glow_c1.setAlpha(25)
-        pen_g1 = QPen(glow_c1)
-        pen_g1.setWidthF(stroke_width * 1.8)
-        pen_g1.setCapStyle(Qt.RoundCap)
+        start_angle = 90 * 16
+
+        # Layer A: Massive Outer Bloom
+        glow_1 = QColor(color)
+        glow_1.setAlpha(int(35 * dimmer))
+        pen_g1 = QPen(glow_1, stroke_width * 2.2, Qt.SolidLine, Qt.RoundCap)
         painter.setPen(pen_g1)
-        painter.drawArc(inner_rect, 90 * 16, span_angle)
-        
-        # Inner soft glow
-        glow_c2 = QColor(color)
-        glow_c2.setAlpha(50)
-        pen_g2 = QPen(glow_c2)
-        pen_g2.setWidthF(stroke_width * 1.3)
-        pen_g2.setCapStyle(Qt.RoundCap)
+        painter.drawArc(inner_rect, start_angle, span_angle)
+
+        # Layer B: Focused Core Glow
+        glow_2 = QColor(color)
+        glow_2.setAlpha(int(70 * dimmer))
+        pen_g2 = QPen(glow_2, stroke_width * 1.5, Qt.SolidLine, Qt.RoundCap)
         painter.setPen(pen_g2)
-        painter.drawArc(inner_rect, 90 * 16, span_angle)
+        painter.drawArc(inner_rect, start_angle, span_angle)
 
-        # Main Progress (Neon Glow-Glass Border)
-        pen_color = QColor(color)
-        if is_ghost: pen_color.setAlpha(int(0.65 * 255)) 
-        pen_progress = QPen(pen_color)
-        pen_progress.setWidthF(stroke_width)
-        pen_progress.setCapStyle(Qt.RoundCap)
-        painter.setPen(pen_progress)
-        painter.drawArc(inner_rect, 90 * 16, span_angle)
+        # Layer C: Primary Visible Line
+        core_col = QColor(color)
+        core_col.setAlpha(int(200 * dimmer))
+        pen_core = QPen(core_col, stroke_width, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen_core)
+        painter.drawArc(inner_rect, start_angle, span_angle)
 
-        # 4. Central Text (NEON HUD VIBRANCY - 60% for true Ghost)
+        # 5. DATA HUD (Center Text)
         text_color = QColor(colors["text"])
-        if is_ghost: text_color.setAlpha(153) # 60% opacity
+        text_color.setAlpha(int(220 * dimmer))
         painter.setPen(text_color)
-        font = QFont("Consolas", font_size, QFont.Bold)
-        painter.setFont(font)
+        painter.setFont(QFont("Consolas", font_size, QFont.Bold))
         
-        value_rect = QRectF(
-            arc_rect.left(), 
-            arc_rect.top() + arc_rect.height() * 0.35, 
-            arc_rect.width(), 
-            arc_rect.height() * 0.3
-        )
-        painter.drawText(value_rect, Qt.AlignCenter, f"{self._value}")
-        
-        # Subtitle (Tenue pero visible 'adelante' - 30%)
-        font_sub = QFont("Consolas", int(font_size * 0.35), QFont.DemiBold)
-        painter.setFont(font_sub)
-        sub_color = QColor(colors["text"])
-        if is_ghost: sub_color.setAlpha(76) # 30% alpha for subtitle
-        painter.setPen(sub_color)
-        
-        sub_rect = QRectF(
-            arc_rect.left(), 
-            arc_rect.top() + arc_rect.height() * 0.58, 
-            arc_rect.width(), 
-            arc_rect.height() * 0.2
-        )
-        painter.drawText(sub_rect, Qt.AlignCenter, "SCORE")
+        # Perfectly centered in the middle of the widget
+        painter.drawText(self.rect(), Qt.AlignCenter, str(self._value))
+

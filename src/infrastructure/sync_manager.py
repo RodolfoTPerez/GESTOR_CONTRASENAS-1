@@ -2,6 +2,7 @@ import time
 import json
 import base64
 import logging
+from typing import List, Dict, Any, Optional
 from src.infrastructure.remote_storage_client import RemoteStorageClient
 
 logger = logging.getLogger(__name__)
@@ -187,33 +188,45 @@ class SyncManager:
 
             if progress_callback: progress_callback(0, "Initializing backup...")
             total = len(local)
-            payload = []
-            for i, s in enumerate(local):
-                if progress_callback:
-                    progress_callback(10 + int((i / total) * 70), f"Encoding: {s['service']}")
+            # [GOD-LEVEL OPTIMIZATION] Paginated Backup
+            PAGE_SIZE = 100
+            offset = 0
+            uploaded_total = 0
+            
+            while True:
+                local_page = self.sm.get_all_encrypted(limit=PAGE_SIZE, offset=offset)
+                if not local_page: break
                 
-                c_id = s.get("cloud_id") or self._ensure_cloud_id(s)
-                item = {
-                    "id": c_id,
-                    "service": s["service"],
-                    "username": s["username"],
-                    "secret": self._encode_secret(s["nonce_blob"], s["secret_blob"]),
-                    "notes": s.get("notes"),
-                    "updated_at": int(time.time()),
-                    "deleted": s.get("deleted", 0),
-                    "owner_name": s.get("owner_name"),
-                    "owner_id": self.sm.current_user_id,
-                    "is_private": s.get("is_private", 0),
-                    "synced": 1,
-                    "vault_id": s.get("vault_id") or self.sm.current_vault_id,
-                    "integrity_hash": s.get("integrity_hash"),
-                    "version": s.get("version")
-                }
-                payload.append(item)
-
-            if payload:
-                if progress_callback: progress_callback(90, "Uploading data...")
-                self.client.post_records(self.table, payload)
+                if progress_callback:
+                    progress_callback(10 + int((uploaded_total / total) * 80), f"Backing up: Page {offset//PAGE_SIZE + 1}")
+                
+                payload = []
+                for s in local_page:
+                    c_id = s.get("cloud_id") or self._ensure_cloud_id(s)
+                    item = {
+                        "id": c_id,
+                        "service": s["service"],
+                        "username": s["username"],
+                        "secret": self._encode_secret(s["nonce_blob"], s["secret_blob"]),
+                        "notes": s.get("notes"),
+                        "updated_at": int(time.time()),
+                        "deleted": s.get("deleted", 0),
+                        "owner_name": s.get("owner_name"),
+                        "owner_id": self.sm.current_user_id,
+                        "is_private": s.get("is_private", 0),
+                        "synced": 1,
+                        "vault_id": s.get("vault_id") or self.sm.current_vault_id,
+                        "integrity_hash": s.get("integrity_hash"),
+                        "version": s.get("version")
+                    }
+                    payload.append(item)
+                
+                if payload:
+                    self.client.post_records(self.table, payload)
+                    uploaded_total += len(payload)
+                
+                offset += PAGE_SIZE
+                if len(local_page) < PAGE_SIZE: break
             
             if progress_callback: progress_callback(100, "Backup complete.")
             self.sync_audit_logs()
@@ -390,31 +403,89 @@ class SyncManager:
         except Exception as e: logger.error(f"Error syncing keys: {e}")
 
     def _push_local_to_cloud(self):
+        """[GOD-MODE] Optimized batch upload for local changes."""
         stats = {"success": 0, "failed": 0}
-        for rec in self.sm.get_all_encrypted(only_mine=True):
-            if rec.get("synced"): continue
-            
+        
+        # 1. Collect all local changes (no limit since changes are usually few)
+        pending = [r for r in self.sm.get_all_encrypted(only_mine=True) if not r.get("synced")]
+        if not pending: return stats
+
+        to_update = []
+        to_insert = []
+        to_delete_local = []
+        
+        for rec in pending:
             try:
-                # Handle deleted records separately
                 if rec.get("deleted"):
-                    # Delete from Supabase if it has a cloud_id
                     if rec.get("cloud_id"):
                         self.delete_from_supabase(rec["id"])
-                        logger.info(f"Deleted record {rec['id']} from Supabase (offline delete sync)")
-                    
-                    # Mark as synced and remove from local DB
-                    self.sm.conn.execute("DELETE FROM secrets WHERE id=?", (rec["id"],))
-                    self.sm.conn.commit()
+                    to_delete_local.append(rec["id"])
                     stats["success"] += 1
                 else:
-                    # Upload normal record
-                    if self._upload_record(rec):
-                        self.sm.mark_as_synced(rec["id"], 1)
-                        stats["success"] += 1
+                    payload = self._build_record_payload(rec)
+                    if rec.get("cloud_id"):
+                        to_update.append(payload)
+                    else:
+                        # For new records, we need to ensure cloud_id locally first
+                        rec["cloud_id"] = self._ensure_cloud_id(rec)
+                        payload["id"] = rec["cloud_id"]
+                        to_insert.append(payload)
             except Exception as e:
-                logger.error(f"Error syncing record {rec.get('id')}: {e}")
+                logger.error(f"Error preparing record {rec.get('id')}: {e}")
                 stats["failed"] += 1
+
+        # 2. Batch Operations
+        if to_insert:
+            try:
+                self.client.post_records(self.table, to_insert)
+                for r in to_insert: self.sm.mark_as_synced(r["id"], 1, is_cloud_id=True)
+                stats["success"] += len(to_insert)
+            except Exception as e:
+                logger.error(f"Batch insert failed: {e}")
+                stats["failed"] += len(to_insert)
+
+        if to_update:
+            # Note: Patch records individually or via bulk update if SDK supports it
+            # For now, batching inserts is the primary win.
+            for p in to_update:
+                if self._upload_record_payload(p, p["id"]):
+                    self.sm.mark_as_synced(p["id"], 1, is_cloud_id=True)
+                    stats["success"] += 1
+                else:
+                    stats["failed"] += 1
+
+        if to_delete_local:
+            for rid in to_delete_local:
+                self.sm.conn.execute("DELETE FROM secrets WHERE id=?", (rid,))
+            self.sm.conn.commit()
+
         return stats
+
+    def _build_record_payload(self, rec: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper to build Supabase payload."""
+        return {
+            "service": rec["service"],
+            "username": rec["username"],
+            "secret": self._encode_secret(rec["nonce_blob"], rec["secret_blob"]),
+            "notes": rec.get("notes"),
+            "updated_at": int(time.time()),
+            "owner_name": str(rec.get("owner_name") or self.sm.current_user or "unknown").upper(),
+            "is_private": rec.get("is_private", 0),
+            "deleted": rec.get("deleted", 0),
+            "vault_id": rec.get("vault_id") or self.sm.current_vault_id,
+            "integrity_hash": rec.get("integrity_hash"),
+            "version": rec.get("version")
+        }
+
+    def _upload_record_payload(self, payload: Dict[str, Any], cloud_id: str) -> bool:
+        """Helper for individual payload upload."""
+        try:
+            url = f"{self.client.supabase_url}/rest/v1/{self.table}?id=eq.{cloud_id}"
+            r = self.client.session.patch(url, headers=self.client.headers, json=payload)
+            return r.status_code in (200, 204)
+        except Exception as e:
+            logger.error(f"Upload error: {e}")
+            return False
 
     def _pull_cloud_to_local(self):
         user = (self.sm.current_user or "").upper()
@@ -722,8 +793,8 @@ class SyncManager:
             import requests
             response = requests.get('https://api.ipify.org?format=json', timeout=3)
             return response.json().get('ip', 'Unknown')
-        except:
-            # Fallback a IP local si no hay internet o el servicio falla
+        except Exception as e:
+            logger.debug(f"Public IP discovery failed (iPify): {e}")
             try:
                 import socket
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -731,7 +802,8 @@ class SyncManager:
                 ip = s.getsockname()[0]
                 s.close()
                 return ip
-            except:
+            except Exception as e:
+                logger.debug(f"Local IP discovery failed: {e}")
                 return "Unknown"
     
     def send_heartbeat(self, action="HEARTBEAT", status="ONLINE"):

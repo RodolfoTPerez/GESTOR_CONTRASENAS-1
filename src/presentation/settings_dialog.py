@@ -46,7 +46,22 @@ class SettingsDialog(QDialog):
         wrapper_layout.addWidget(self.frame)
 
         # Apply generic dialog styles (Now includes #DialogFrame rules)
-        self.setStyleSheet(self.theme.load_stylesheet("dialogs"))
+        # [SENIOR FIX] Force Glass Effect on inner cards by overriding the solid token
+        # We manually calculate RGBA for the card background to ensure transparency
+        card_bg_hex = colors.get("bg_dashboard_card", "#0f172a")
+        if card_bg_hex.startswith("#"):
+             c_bg = QColor(card_bg_hex)
+             glass_bg = f"rgba({c_bg.red()}, {c_bg.green()}, {c_bg.blue()}, 0.95)"
+        else: glass_bg = card_bg_hex
+
+        base_qss = self.theme.load_stylesheet("dialogs")
+        self.setStyleSheet(self.theme.apply_tokens(base_qss + f"""
+            QFrame#card {{
+                background-color: {glass_bg};
+                border: 1px solid @border;
+                border-radius: @border-radius-main;
+            }}
+        """))
 
         main_v_layout = QVBoxLayout(self.frame)
         main_v_layout.setContentsMargins(30, 30, 30, 30)
@@ -111,13 +126,28 @@ class SettingsDialog(QDialog):
         left_layout.addWidget(self.combo_lang)
 
         left_layout.addWidget(QLabel(MESSAGES.SETTINGS.LBL_VAULT_NAME))
+        
+        vault_name_layout = QHBoxLayout()
+        vault_name_layout.setSpacing(10)
+        
         self.input_instance_name = QLineEdit()
+        self.input_instance_name.setReadOnly(True) # Read-only by default
         instance_name = ""
         if hasattr(self.parent(), 'sm'):
             instance_name = self.parent().sm.get_meta("instance_name") or "VULTRAX CORE"
         self.original_instance_name = instance_name # [OPTIMIZATION] Store for diff check
         self.input_instance_name.setText(instance_name)
-        left_layout.addWidget(self.input_instance_name)
+        
+        self.btn_modify_name = QPushButton(MESSAGES.SETTINGS.BTN_MOD)
+        self.btn_modify_name.setObjectName("btn_secondary")
+        self.btn_modify_name.setFixedWidth(100)
+        self.btn_modify_name.setCursor(Qt.PointingHandCursor)
+        self.btn_modify_name.clicked.connect(self._enable_instance_name_edit)
+        
+        vault_name_layout.addWidget(self.input_instance_name)
+        vault_name_layout.addWidget(self.btn_modify_name)
+        
+        left_layout.addLayout(vault_name_layout)
 
         left_layout.addStretch()
         
@@ -275,6 +305,34 @@ class SettingsDialog(QDialog):
         btn_layout.addWidget(self.btn_save)
         main_v_layout.addLayout(btn_layout)
 
+    def refresh_theme(self):
+        """NUCLEAR THEME REFRESH: Re-applies all dynamic tokens."""
+        # This is critical for Glass/Tactical switching
+        colors = self.theme.get_theme_colors()
+        
+        # 1. Update card backgrounds (Glass vs Solid)
+        card_bg_hex = colors.get("bg_dashboard_card", "#0f172a")
+        if card_bg_hex.startswith("#"):
+             c_bg = QColor(card_bg_hex)
+             glass_bg = f"rgba({c_bg.red()}, {c_bg.green()}, {c_bg.blue()}, 0.95)"
+        else: glass_bg = card_bg_hex
+
+        base_qss = self.theme.load_stylesheet("dialogs")
+        self.setStyleSheet(self.theme.apply_tokens(base_qss + f"""
+            QFrame#card {{
+                background-color: {glass_bg};
+                border: 1px solid @border;
+                border-radius: @border-radius-main;
+            }}
+        """))
+        
+        # 2. Update specific labels that use manual colors (like headers)
+        self.lbl_gemini.setStyleSheet(f"font-weight: 600; color: {colors['text']};")
+        self.lbl_chatgpt.setStyleSheet(f"font-weight: 600; color: {colors['text']};")
+        self.lbl_claude.setStyleSheet(f"font-weight: 600; color: {colors['text']};")
+        
+        self._update_status_indicators()
+    
     def _update_status_indicators(self):
         """Update visual status indicators for API keys."""
         colors = self.theme.get_theme_colors()
@@ -465,3 +523,10 @@ class SettingsDialog(QDialog):
         if dialog.exec_() == QDialog.Accepted:
             # Si tuvo éxito, cerramos Settings también para forzar flow limpio
             self.accept()
+
+    def _enable_instance_name_edit(self):
+        """Habilita la edición del nombre de la instancia."""
+        self.input_instance_name.setReadOnly(False)
+        self.input_instance_name.setFocus()
+        self.btn_modify_name.setEnabled(False)
+        self.btn_modify_name.setText("OK")

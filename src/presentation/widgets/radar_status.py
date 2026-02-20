@@ -64,6 +64,8 @@ class RadarStatusWidget(QWidget):
         radius = min(self.width(), self.height()) / 2 - 4
         
         colors = self.theme_manager.get_theme_colors()
+        # [SENIOR FIX] Respect global dimmer
+        dimmer = getattr(self.theme_manager, '_GLOBAL_OPACITY', 1.0)
         
         # Colors based on health
         if self._online:
@@ -78,23 +80,24 @@ class RadarStatusWidget(QWidget):
         # 1. Draw outer circle
         is_ghost = self.property("ghost") == "true"
         if is_ghost:
-            line_opacity = int(line_opacity * 0.85) # 85% of original (Senior: Increased from 40%)
-            circle_opacity = int(0.25 * 255) # 25% HUD standard (background) (Senior: Increased from 8%)
+            line_opacity = int(line_opacity * 0.85) 
+            circle_opacity = int(0.25 * 255) 
+            
+        # Apply global dimmer
+        line_opacity = int(line_opacity * dimmer)
+        circle_opacity = int(circle_opacity * dimmer)
 
         pen = QPen(QColor(base_color.red(), base_color.green(), base_color.blue(), circle_opacity), 1.5)
         painter.setPen(pen)
         painter.drawEllipse(QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2))
         
         # 2. Draw Scanning Effect (The Pie)
-        # PyQt uses 1/16th of a degree. 
-        # start_angle: where it starts. span_angle: how wide.
-        # We use a negative angle for clockwise rotation to match the "radar" feel
         start_angle = int((90 - self._angle) * 16)
-        span_angle = 45 * 16 # 45 degree beam
+        span_angle = 45 * 16 
         
         gradient = QConicalGradient(center_x, center_y, 90 - self._angle)
         gradient.setColorAt(0, QColor(base_color.red(), base_color.green(), base_color.blue(), line_opacity))
-        gradient.setColorAt(0.1, QColor(base_color.red(), base_color.green(), base_color.blue(), 50))
+        gradient.setColorAt(0.1, QColor(base_color.red(), base_color.green(), base_color.blue(), int(50 * dimmer)))
         gradient.setColorAt(0.3, Qt.transparent)
         
         painter.setBrush(gradient)
@@ -111,7 +114,10 @@ class RadarStatusWidget(QWidget):
         painter.drawLine(int(center_x), int(center_y), int(lx), int(ly))
         
         # 4. Center Dot
-        painter.setBrush(base_color)
+        # Fix dot opacity too
+        dot_col = QColor(base_color)
+        dot_col.setAlpha(int(255 * dimmer))
+        painter.setBrush(dot_col)
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(QRectF(center_x - 2, center_y - 2, 4, 4))
 
@@ -123,12 +129,11 @@ class RadarStatusWidget(QWidget):
         # Occasionally add a new blip (low probability)
         import random
         if len(self._blips) < 3 and random.random() < 0.05:
-            # Random position within the radar circle
             angle = random.uniform(0, 2 * math.pi)
             dist = random.uniform(5, radius - 5)
             bx = center_x + dist * math.cos(angle)
             by = center_y + dist * math.sin(angle)
-            self._blips.append({"pos": (bx, by), "life": 1.0}) # Life from 1.0 to 0.0
+            self._blips.append({"pos": (bx, by), "life": 1.0}) 
             
         # Update and draw blips
         new_blips = []
@@ -137,14 +142,19 @@ class RadarStatusWidget(QWidget):
             bx, by = blip["pos"]
             
             # Draw the blip (fading dot - 80% for Ghost)
-            blip_opacity = int(255 * life * 0.8) if is_ghost else int(255 * life) # Senior: Increased from 40%
+            blip_opacity = int(255 * life * 0.8) if is_ghost else int(255 * life)
+            blip_opacity = int(blip_opacity * dimmer)
+            
             painter.setBrush(QColor(base_color.red(), base_color.green(), base_color.blue(), blip_opacity))
             painter.drawEllipse(QRectF(bx - 1.5, by - 1.5, 3, 3))
             
             # Subtle glow for the blip (40% for Ghost)
-            glow_alpha_blip = int(60 * life * 0.4) if is_ghost else int(60 * life) # Senior: Increased from 20%
+            glow_alpha_blip = int(60 * life * 0.4) if is_ghost else int(60 * life)
+            glow_alpha_blip = int(glow_alpha_blip * dimmer)
+            
             painter.setBrush(QColor(base_color.red(), base_color.green(), base_color.blue(), glow_alpha_blip))
             painter.drawEllipse(QRectF(bx - 3, by - 3, 6, 6))
+            
             
             # Decrease life
             blip["life"] -= 0.02

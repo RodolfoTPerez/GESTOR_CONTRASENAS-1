@@ -1,15 +1,20 @@
 import pyotp
+import base64, secrets, hashlib, re, logging, uuid
 from typing import Any, Optional, Tuple, Dict
 from supabase import create_client
-from config.config import SUPABASE_URL, SUPABASE_KEY
+
+# Infrastructure imports
+from config.config import (
+    SUPABASE_URL, SUPABASE_KEY, AUTH_MAX_ATTEMPTS, 
+    AUTH_WINDOW_SECONDS, MAX_USERS_LIMIT, TOTP_SYSTEM_KEY
+)
 from src.infrastructure.security.device_fingerprint import get_hwid
 from src.infrastructure.crypto_engine import CryptoEngine, rate_limit
-import base64, secrets, hashlib, re, logging
 from src.domain.messages import MESSAGES
-
-# NEW: Import refactored components
 from src.infrastructure.auth.auth_manager import AuthManager
 from src.infrastructure.hwid.hwid_service import HWIDService
+from src.infrastructure.config.path_manager import PathManager
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 class UserManager:
     def __init__(self, secrets_manager=None):
@@ -35,11 +40,8 @@ class UserManager:
             # Sincronizar en la tabla que usa UUIDs (vaults)
             self.supabase.table("vaults").upsert({"id": vault_id, "name": name}).execute()
             
-            # Intento secundario en vault_groups (Opcional)
-            try:
-                self.supabase.table("vault_groups").upsert({"vault_name": name}).execute()
-            except Exception as e:
-                self.logger.warning(f"No se pudo actualizar vault_groups (Opcional): {e}")
+            # The modern system uses the 'vaults' table (UUID-based). 
+            # 'vault_groups' is legacy/deprecated and can trigger RLS warnings.
 
             self.logger.info(f"Nombre '{name}' sincronizado en tablas de boveda.")
             return True
@@ -55,7 +57,6 @@ class UserManager:
             from src.infrastructure.secrets_manager import SecretsManager
             self.sm = SecretsManager()
             
-        from src.infrastructure.config.path_manager import PathManager
         db_path = PathManager.get_user_db(username)
         
         # Solo reconectamos si la base de datos existe localmente.
@@ -153,7 +154,7 @@ class UserManager:
         """
         return self.auth.hash_password(password, salt)
 
-    @rate_limit(max_attempts=5, window=60)
+    @rate_limit(max_attempts=AUTH_MAX_ATTEMPTS, window=AUTH_WINDOW_SECONDS)
     def verify_password(self, password: str, salt: Any, stored_hash: str) -> bool:
         """Verifica una contraseña delegando en AuthManager."""
         result = self.auth.verify_password(password, salt, stored_hash)
@@ -278,9 +279,6 @@ class UserManager:
                 totp_clean = totp_raw
             else:
                 try:
-                    from src.infrastructure.config.config import TOTP_SYSTEM_KEY
-                    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-                    import hashlib
                     key = hashlib.sha256(TOTP_SYSTEM_KEY.encode()).digest()
                     cipher = AESGCM(key)
                     payload = base64.b64decode(totp_raw)
@@ -353,7 +351,7 @@ class UserManager:
 
 
 
-    @rate_limit(max_attempts=5, window=60)
+    @rate_limit(max_attempts=AUTH_MAX_ATTEMPTS, window=AUTH_WINDOW_SECONDS)
     def check_local_login(self, username, password):
         """Intenta validar el login usando solo la base de datos local."""
         username_clean = username.upper().replace(" ", "")
@@ -573,10 +571,6 @@ class UserManager:
             if not check_response.data: return False
             
             # Cifrar con System Key usando AES-GCM
-            from config.config import TOTP_SYSTEM_KEY
-            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-            import hashlib
-            
             # Derivar clave de 32 bytes desde el pepper
             key = hashlib.sha256(TOTP_SYSTEM_KEY.encode()).digest()
             cipher = AESGCM(key)
@@ -652,8 +646,8 @@ class UserManager:
         check = self.validate_user_access(username)
         if check and check.get("exists"):
             return False, f"El usuario '{username}' ya está registrado en el sistema."
-        if self.get_user_count() >= 5:
-            return False, "Límite de usuarios alcanzado (Máx 5)."
+        if self.get_user_count() >= MAX_USERS_LIMIT:
+            return False, f"Límite de usuarios alcanzado (Máx {MAX_USERS_LIMIT})."
         return True, ""
 
     def _generate_user_keys(self, username: str, role: str, password: str) -> Dict[str, Any]:

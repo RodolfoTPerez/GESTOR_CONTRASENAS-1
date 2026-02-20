@@ -1,5 +1,7 @@
 import os
 from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtWidgets import QApplication
 import logging
 
 class ThemeManager(QObject):
@@ -10,6 +12,24 @@ class ThemeManager(QObject):
     
     # Global state to sync widgets without passing settings everywhere
     _GLOBAL_THEME = None
+    _GLOBAL_OPACITY = 1.0  # Granular transparency multiplier (0.2 - 1.0)
+    
+    # [ATOMIC DESIGN] Centralized Font Registry
+    _FONTS = {
+        "header": {"family": "Segoe UI", "size": 11, "weight": 75}, # Bold
+        "label": {"family": "Segoe UI", "size": 9, "weight": 50},   # Normal
+        "value": {"family": "Consolas", "size": 13, "weight": 63},  # SemiBold
+        "tiny": {"family": "Segoe UI", "size": 8, "weight": 50},
+        "display": {"family": "Segoe UI", "size": 18, "weight": 87} # Black
+    }
+
+    def get_font(self, token="label"):
+        """Returns a QFont object based on the atomic token."""
+        from PyQt5.QtGui import QFont
+        props = self._FONTS.get(token, self._FONTS["label"])
+        font = QFont(props["family"], props["size"])
+        font.setWeight(props["weight"])
+        return font
     
     # [CONFIG] Constante para QSettings
     APP_ID = "VultraxCore"
@@ -221,8 +241,6 @@ class ThemeManager(QObject):
         This prevents white flashes by ensuring the OS 'clear-buffer' uses the dark background
         before any CSS is even parsed.
         """
-        from PyQt5.QtGui import QPalette, QColor
-        
         # Prefer provided theme, then current, then global fallback
         tid = theme_id or self.current_theme or ThemeManager._GLOBAL_THEME or "tactical_dark"
         colors = self.THEMES.get(tid)
@@ -250,8 +268,16 @@ class ThemeManager(QObject):
         
         app.setPalette(palette)
         # Force redraw if app is already running
-        app.processEvents()
+        QApplication.processEvents()
         self.logger.info(f"ThemeManager: Global Application Palette synchronized with {tid}")
+
+    def get_scanline_pattern(self, opacity=0.03):
+        """Generates a QSS pattern for a scanline overlay."""
+        # [HOTFIX] Returning empty string to prevent "Damaged Background" caused by 
+        # stretching gradients when background-size is missing.
+        return "" 
+        # Previous defective line:
+        # return f"background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, {opacity}) 50%); background-repeat: repeat;"
 
     def apply_app_theme(self, app):
         """Applies both base and dashboard styles to the entire application efficiently."""
@@ -278,12 +304,13 @@ class ThemeManager(QObject):
             app.style().polish(app)
             
             # [SENIOR REFINEMENT] Polish the active window to force children to re-read stylesheet
-            active_window = app.activeWindow()
+            active_window = QApplication.activeWindow()
             if active_window:
                 active_window.style().unpolish(active_window)
                 active_window.style().polish(active_window)
                 active_window.update()
             
+            QApplication.processEvents()
             logging.getLogger(__name__).info("ThemeManager: Global theme applied successfully.")
         except Exception as e:
             logging.getLogger(__name__).error(f"ThemeManager: Critical error applying theme: {e}")
@@ -308,50 +335,132 @@ class ThemeManager(QObject):
         ghost_colors["ghost_border"] = colors.get("border", "rgba(255,255,255,0.1)")
         
         # Semantic Opacity Matrix
-        opacity_variants = {
-            "08": 0.08, "10": 0.10, "15": 0.15, "20": 0.20, "25": 0.25, 
-            "30": 0.30, "35": 0.35, "40": 0.40, "45": 0.45, "55": 0.55, 
-            "65": 0.65, "75": 0.75, "85": 0.85, "90": 0.90, "95": 0.95
+        dimmer = ThemeManager._GLOBAL_OPACITY
+        
+        # [SENIOR FIX] Split variants into STATIC (Structure/Backgrounds) and DYNAMIC (Glows/Content)
+        # Structural variants (White/Black) should NOT fade, preserving the "Glass" look.
+        opacity_base = {
+            "5": 0.05, "05": 0.05, 
+            "08": 0.08, "10": 0.10, "15": 0.15, 
+            "20": 0.20, "25": 0.25, "30": 0.30, 
+            "35": 0.35, "40": 0.40, "45": 0.45, 
+            "50": 0.50, "55": 0.55, "60": 0.60, "65": 0.65, 
+            "70": 0.70, "75": 0.75, "80": 0.80, "85": 0.85, 
+            "90": 0.90, "95": 0.95
         }
         
         core_semantic_keys = ["primary", "secondary", "accent", "danger", "warning", "success", "info", "ai", "ai_sec", "text", "text_dim"]
+        background_variants_keys = ["bg", "bg_sec", "bg_dashboard_card"] # Add background keys for variants
         
-        for k in core_semantic_keys:
+        # Track keys that ALREADY have dimmer applied (or explicitly shouldn't)
+        already_dimmed_keys = set()
+        
+        for k in core_semantic_keys + background_variants_keys:
             if k in colors:
                 val = colors[k]
                 r, g, b = 255, 255, 255 # Default
                 if val.startswith("#"):
                     h = val.lstrip('#')
                     if len(h) == 6:
-                        r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                        try:
+                            r, g, b = tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+                        except Exception: pass
                 elif val.startswith("rgba"):
                     try:
-                        parts = val.replace("rgba(", "").replace(")", "").split(",")
+                        parts = val.replace("rgba(", "").replace(")", "").replace(" ", "").split(",")
                         r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
                     except Exception as e:
-                        logger.debug(f"RGBA parsing failed for {val}: {e}")
+                        logging.getLogger(__name__).debug(f"RGBA parsing failed for {val}: {e}")
                 
-                alpha = 0.45 if k in ["danger", "warning"] else 0.25
-                ghost_colors[f"ghost_{k}"] = f"rgba({r}, {g}, {b}, {alpha})"
+                # Dynamic Semantic Colors -> DIMMED
+                if k in core_semantic_keys:
+                    alpha = 0.45 if k in ["danger", "warning"] else 0.25
+                    # Apply dimmer to base ghost colors of semantic types
+                    ghost_colors[f"ghost_{k}"] = f"rgba({r}, {g}, {b}, {alpha * dimmer})"
                 
-                # Base variants (e.g. @primary_20)
-                for suffix, alpha_val in opacity_variants.items():
-                    ghost_colors[f"ghost_{k}_{suffix}"] = f"rgba({r}, {g}, {b}, {alpha_val})"
-                    ghost_colors[f"{k}_{suffix}"] = f"rgba({r}, {g}, {b}, {alpha_val})"
+                # Variants (e.g. @primary_20 or @bg_sec_95)
+                for suffix, base_alpha in opacity_base.items():
+                    # [SENIOR DECISION] Background variants should be STATIC to preserve Glass look
+                    # unless they are explicitly semantic variants.
+                    is_bg = k in background_variants_keys
+                    final_alpha = base_alpha if is_bg else (base_alpha * dimmer)
+                    
+                    k1 = f"ghost_{k}_{suffix}"
+                    k2 = f"{k}_{suffix}"
+                    ghost_colors[k1] = f"rgba({r}, {g}, {b}, {final_alpha})"
+                    ghost_colors[k2] = f"rgba({r}, {g}, {b}, {final_alpha})"
+                    
+                    if not is_bg:
+                        already_dimmed_keys.add(k1)
+                        already_dimmed_keys.add(k2)
         
-        for suffix, alpha_val in opacity_variants.items():
-            ghost_colors[f"ghost_white_{suffix}"] = f"rgba(255, 255, 255, {alpha_val})"
-            ghost_colors[f"ghost_black_{suffix}"] = f"rgba(0, 0, 0, {alpha_val})"
-            ghost_colors[f"white_{suffix}"] = f"rgba(255, 255, 255, {alpha_val})"
-            ghost_colors[f"black_{suffix}"] = f"rgba(0, 0, 0, {alpha_val})"
+        # Structural Variants (White/Black) -> STATIC (Ignore Dimmer)
+        # This fixes "EL FONDO DE LAS TARJETAS... NO SE VEA AFECTADO"
+        for suffix, base_alpha in opacity_base.items():
+            k1 = f"ghost_white_{suffix}"
+            k2 = f"ghost_black_{suffix}"
+            k3 = f"white_{suffix}"
+            k4 = f"black_{suffix}"
+            
+            # Use base_alpha directly (Static)
+            ghost_colors[k1] = f"rgba(255, 255, 255, {base_alpha})"
+            ghost_colors[k2] = f"rgba(0, 0, 0, {base_alpha})"
+            ghost_colors[k3] = f"rgba(255, 255, 255, {base_alpha})"
+            ghost_colors[k4] = f"rgba(0, 0, 0, {base_alpha})"
+            
+            already_dimmed_keys.add(k1)
+            already_dimmed_keys.add(k2)
+            already_dimmed_keys.add(k3)
+            already_dimmed_keys.add(k4)
 
         colors.update(ghost_colors)
         
-        # [SENIOR FIX] Use regex to avoid partial token replacement (e.g. @primary vs @primary_20)
+        # [SENIOR FIX] Apply Global Dimmer to ALL color tokens
+        # This ensures that even QSS-defined text colors obey the dimmer
+        dimmer = ThemeManager._GLOBAL_OPACITY
+        logging.getLogger(__name__).debug(f"APPLYING TOKENS with Opacity: {dimmer}")
+        
+        def apply_dimmer(color_str):
+            if not isinstance(color_str, str) or not color_str: 
+                return color_str
+            try:
+                # Handle Hex (e.g., #FFFFFF)
+                if color_str.startswith("#"):
+                    c = QColor(color_str)
+                    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {dimmer})"
+                
+                # Handle RGBA (e.g., rgba(255, 255, 255, 1.0))
+                elif color_str.startswith("rgba"):
+                    # Use QColor for robust parsing if possible, or regex
+                    # QColor constructor handles rgba(...) strings usually
+                    c = QColor(color_str)
+                    if c.isValid():
+                         new_alpha = c.alphaF() * dimmer
+                         return f"rgba({c.red()}, {c.green()}, {c.blue()}, {new_alpha})"
+            except:
+                pass
+            return color_str
+
+        # [SENIOR FIX] Update the colors map with dimmed values
+        # EXCLUDING BACKGROUNDS to prevent the "faded card" effect the user dislikes.
+        # EXCLUDING ALREADY DIMMED VARIANTS to prevent double-dimming (invisibility).
+        background_keys = {
+            "bg", "bg_sec", "bg_dashboard_card", "card_bg", 
+            "shadow", "glow", "ghost_bg", "ghost_bg_light", "ghost_bg_dark",
+            "color-bg-primary", "color-bg-secondary", "color-bg-tertiary"
+        }
+        
+        dimmed_colors = {}
+        for k, v in colors.items():
+            if k in background_keys or k in already_dimmed_keys:
+                dimmed_colors[k] = v # Keep as is (Static or Already Dimmed)
+            else:
+                dimmed_colors[k] = apply_dimmer(v) # Dim text, accent, primary, etc.
+
         import re
         def replace_match(match):
             key = match.group(1)
-            return colors.get(key, f"@{key}")
+            return dimmed_colors.get(key, f"@{key}")
             
         return re.sub(r"@([\w-]+)", replace_match, content)
 
@@ -389,3 +498,11 @@ class ThemeManager(QObject):
             self.theme_changed.emit(theme_id)
             return True
         return False
+
+    @classmethod
+    def set_global_opacity(cls, value):
+        """Sets the global opacity multiplier and clears cache to force redraw."""
+        # Ensure value is within safe bounds (20% to 100%)
+        cls._GLOBAL_OPACITY = max(0.2, min(1.0, float(value)))
+        cls.clear_cache()
+        logging.getLogger(__name__).debug(f"ThemeManager: Global Opacity set to {cls._GLOBAL_OPACITY}")

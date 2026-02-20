@@ -23,8 +23,8 @@ QPushButton#admin_action_btn:pressed {
 
 /* Sidebar - Deep Navigation */
 QFrame#sidebar { 
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 @bg_sec, stop:1 transparent);
-    border: none;
+    background: transparent;
+    border-right: 1px solid @border;
 }
 
 #sidebar_logo {
@@ -260,6 +260,35 @@ QFrame[depth="dashboard"][ghost="true"],
     text-transform: uppercase;
     background: transparent;
 }
+
+/* [ATOMIC MIGRATION] Support for new TacticalLabel ID */
+#tile_title_tactical {
+    color: @text_dim;
+    font-family: @font-family-main;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    qproperty-opacity: 0.6; /* Note: QSS generic opacity might not work on all widgets, but color alpha does */
+    background: transparent;
+}
+
+
+/* Threats Monitoring Atomic Styles */
+#threat_dot_indicator { color: @danger; }
+#threat_alert_msg { color: @text; }
+
+/* Password Health Atomic Styles */
+#mini_stat_icon[status="danger"] { color: @danger; font-size: 14px; background: transparent; }
+#mini_stat_icon[status="warning"] { color: @warning; font-size: 14px; background: transparent; }
+#mini_stat_icon[status="success"] { color: @success; font-size: 14px; background: transparent; }
+#mini_stat_icon[status="text_dim"] { color: @text_dim; font-size: 14px; background: transparent; }
+
+#mini_stat_value[status="danger"] { color: @danger; font-weight: 700; background: transparent; }
+#mini_stat_value[status="warning"] { color: @warning; font-weight: 700; background: transparent; }
+#mini_stat_value[status="success"] { color: @success; font-weight: 700; background: transparent; }
+#mini_stat_value[status="text_dim"] { color: @text_dim; font-weight: 700; background: transparent; }
+
+#mini_stat_label { color: @text_dim; font-size: 10px; background: transparent; }
 
 /* 5. Tactical Metrics (Internal Details) */
 #tactical_metric_title, #tactical_metric_label {
@@ -550,18 +579,18 @@ QHeaderView::section {
 
 /* --- TACTICAL METRIC UNITS --- */
 #tactical_bar_container {
-    background-color: @bg_sec;
-    border-radius: 3px;
-    height: 6px;
-    min-height: 6px;
-    max-height: 6px;
+    background-color: @bg !important; /* Contrasting background to make it visible */
+    border-radius: 4px;
+    height: 8px;
+    min-height: 8px;
+    max-height: 8px;
 }
 #tactical_bar_fill {
     background-color: @primary;
-    border-radius: 3px;
-    height: 6px;
-    min-height: 6px;
-    max-height: 6px;
+    border-radius: 4px;
+    height: 8px;
+    min-height: 8px;
+    max-height: 8px;
 }
 #tactical_bar_fill[status="success"] { background-color: @success; }
 

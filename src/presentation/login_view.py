@@ -217,7 +217,7 @@ class LoginView(QMainWindow):
         # 1. EL CONTENEDOR TIPO TARJETA (Glass Card)
         self.card = QFrame()
         self.card.setObjectName("MainCard")
-        self.card.setFixedSize(460, 620)
+        self.card.setFixedSize(460, 800) # Maximum vertical space to avoid all clipping
         
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(40)
@@ -234,9 +234,9 @@ class LoginView(QMainWindow):
         # --- HEADER AREA (Logo + Controls) ---
         header_area = QFrame()
         header_area.setObjectName("HeaderArea")
-        header_area.setFixedHeight(220)
+        header_area.setFixedHeight(350) # Massive space to ensure no clipping
         header_vbox = QVBoxLayout(header_area)
-        header_vbox.setContentsMargins(20, 15, 20, 0)
+        header_vbox.setContentsMargins(20, 10, 20, 0) # Tight top margin for the controls row
         
         # Windows Controls & Connectivity Row
         top_row = QHBoxLayout()
@@ -257,10 +257,8 @@ class LoginView(QMainWindow):
         conn_layout.addWidget(self.conn_led)
         conn_layout.addWidget(self.conn_label)
         
-        # Posicionamiento absoluto en la tarjeta (Superior Derecha)
-        self.conn_widget.setParent(self.card)
-        self.conn_widget.move(self.card.width() - 130, 15)
-        
+        # Posicionamiento en el layout (Superior Izquierda)
+        top_row.addWidget(self.conn_widget)
         top_row.addStretch()
         
         self.btn_min = QPushButton("－")
@@ -278,7 +276,9 @@ class LoginView(QMainWindow):
 
         # Logo dinámico
         self.logo_label = QLabel()
+        self.logo_label.setFixedSize(160, 120) # More compact container
         self.logo_label.setAlignment(Qt.AlignCenter)
+        self.logo_label.setStyleSheet("border: none; background: transparent;")
         
         from src.infrastructure.config.path_manager import PathManager
         custom_logo = PathManager.DATA_DIR / "custom_logo.png"
@@ -286,13 +286,13 @@ class LoginView(QMainWindow):
         
         actual_logo = custom_logo if custom_logo.exists() else default_logo
         if actual_logo.exists():
-            pix = QPixmap(str(actual_logo)).scaled(90, 90, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(actual_logo)).scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.logo_label.setPixmap(pix)
         else:
             self.logo_label.setText("🛡️")
             self.logo_label.setStyleSheet("font-size: 60px; color: white;")
         
-        self.app_title = QLabel("VULTRAX CORE")
+        self.app_title = QLabel("IT SECURITY")
         self.app_title.setObjectName("app_title")
         self.app_title.setAlignment(Qt.AlignCenter)
 
@@ -300,9 +300,11 @@ class LoginView(QMainWindow):
         self.tagline.setObjectName("tagline")
         self.tagline.setAlignment(Qt.AlignCenter)
 
-        header_vbox.addWidget(self.logo_label)
-        header_vbox.addSpacing(10)
+        header_vbox.addSpacing(10) # Minimal space from window controls to move logo UN
+        header_vbox.addWidget(self.logo_label, 0, Qt.AlignCenter)
+        header_vbox.addSpacing(40) # Large gap to avoid overlap with IT SECURITY
         header_vbox.addWidget(self.app_title)
+        header_vbox.addSpacing(5)
         header_vbox.addWidget(self.tagline)
         card_layout.addWidget(header_area)
 
@@ -310,8 +312,8 @@ class LoginView(QMainWindow):
         form_area = QFrame()
         form_area.setObjectName("FormArea")
         form_vbox = QVBoxLayout(form_area)
-        form_vbox.setContentsMargins(45, 20, 45, 30)
-        form_vbox.setSpacing(15)
+        form_vbox.setContentsMargins(45, 10, 45, 10)
+        form_vbox.setSpacing(20) # Increased spacing between fields
         
         self.welcome_label = QLabel(MESSAGES.LOGIN.WELCOME)
         self.welcome_label.setObjectName("welcome_label")
@@ -354,8 +356,9 @@ class LoginView(QMainWindow):
         self.login_button.clicked.connect(self.try_login)
         form_vbox.addWidget(self.login_button)
 
-        # Links Area
-        links_layout = QHBoxLayout()
+        # Links Area (Stacked to prevent horizontal clipping)
+        links_layout = QVBoxLayout()
+        links_layout.setSpacing(8)
         self.btn_reg_toggle = QPushButton(MESSAGES.LOGIN.REG_LINK)
         self.btn_reg_toggle.setObjectName("btn_reg_toggle")
         self.btn_reg_toggle.setCursor(Qt.PointingHandCursor)
@@ -366,9 +369,8 @@ class LoginView(QMainWindow):
         self.btn_recovery.setCursor(Qt.PointingHandCursor)
         self.btn_recovery.clicked.connect(self._show_recovery_info)
         
-        links_layout.addWidget(self.btn_reg_toggle)
-        links_layout.addStretch()
-        links_layout.addWidget(self.btn_recovery)
+        links_layout.addWidget(self.btn_reg_toggle, alignment=Qt.AlignCenter)
+        links_layout.addWidget(self.btn_recovery, alignment=Qt.AlignCenter)
         form_vbox.addLayout(links_layout)
 
         card_layout.addWidget(form_area)
@@ -377,9 +379,10 @@ class LoginView(QMainWindow):
         self.lbl_version = QLabel("PRO VERSION v2.2")
         self.lbl_version.setStyleSheet("color: rgba(255,255,255,0.2); font-size: 9px; font-weight: bold;")
         self.lbl_version.setAlignment(Qt.AlignCenter)
-        card_layout.addStretch()
+        
+        card_layout.addStretch(1) # Ensure footer stays at the absolute bottom
         card_layout.addWidget(self.lbl_version)
-        card_layout.addSpacing(15)
+        card_layout.addSpacing(10) # Minimal padding
         
         # Timer para el LED de conectividad
         self.conn_timer = QTimer(self)

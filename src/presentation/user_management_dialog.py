@@ -51,14 +51,21 @@ class UserManagementDialog(QDialog):
 
         # [SOLUCIÓN DEL USUARIO 1] Fondo oscuro HARDCODED inmediato 
         # (Sin esperar a que cargue el QSS externo)
-        bg_hex = colors.get('bg', '#050505')
+        # [SENIOR FIX] Ensure Glass Transparency for User Dialog
+        bg_hex = colors.get('bg_dashboard_card', '#0f172a')
+        if bg_hex.startswith("#"):
+            c = QColor(bg_hex)
+            glass_bg = f"rgba({c.red()}, {c.green()}, {c.blue()}, 0.98)" # Slightly more opaque for main dialog
+        else: glass_bg = bg_hex
+
+        # [SOLUCIÓN COMBINADA] Aplicamos opacidad controlada
+        self.setStyleSheet(f"QDialog {{ background-color: {glass_bg}; }}")
         
-        # [SOLUCIÓN COMBINADA] Aplicamos opacidad mínima y fondo forzado
-        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex}; }}")
-        
-        # Cargar QSS completo asegurando que el fondo persista
+        # Cargar QSS completo
         full_qss = self.theme.load_stylesheet("dialogs")
-        self.setStyleSheet(f"QDialog {{ background-color: {bg_hex} !important; }}\n{full_qss}")
+        self.setStyleSheet(self.theme.apply_tokens(full_qss + f"""
+            QDialog {{ background-color: {glass_bg}; }}
+        """))
 
         from PyQt5.QtWidgets import QApplication
         QApplication.processEvents() # Procesar para que el estilo se asiente
@@ -188,11 +195,11 @@ class UserManagementDialog(QDialog):
         self.strength_bar.setValue(0)
         self.strength_bar.setTextVisible(False)
         self.strength_bar.setFixedHeight(6)
-        self.strength_bar.setStyleSheet("QProgressBar { background-color: #334155; border-radius: 3px; border: none; }")
+        self.strength_bar.setStyleSheet(self.theme.apply_tokens("QProgressBar { background-color: @bg_sec; border-radius: 3px; border: none; }"))
         strength_container.addWidget(self.strength_bar)
         
         self.strength_label = QLabel("Strength: -")
-        self.strength_label.setStyleSheet("color: #94a3b8; font-size: 10px; font-weight: 600; margin-top: 2px;")
+        self.strength_label.setStyleSheet(self.theme.apply_tokens("color: @text_dim; font-size: 10px; font-weight: 600; margin-top: 2px;"))
         self.strength_label.setAlignment(Qt.AlignRight)
         strength_container.addWidget(self.strength_label)
         
@@ -389,7 +396,7 @@ class UserManagementDialog(QDialog):
         self.btn_add.setEnabled(count < 5)
         if count >= 5:
             self.btn_add.setText(MESSAGES.USERS.BTN_LIMIT)
-            self.btn_add.setStyleSheet("background-color: #4b5563; color: white;")
+            self.btn_add.setStyleSheet(self.theme.apply_tokens("background-color: @secondary; color: white;"))
         else:
             self.btn_add.setText(MESSAGES.USERS.BTN_ADD_FULL)
             self.btn_add.setStyleSheet("")
@@ -408,7 +415,7 @@ class UserManagementDialog(QDialog):
             is_used = inv.get("used", False)
             
             code_item = QTableWidgetItem(inv.get("code", "---"))
-            code_item.setForeground(QColor("#00FF00") if not is_used else QColor("#888888"))
+            code_item.setForeground(QColor(colors.get("success", "#10b981")) if not is_used else QColor(colors.get("text_dim", "#94a3b8")))
             code_item.setTextAlignment(Qt.AlignCenter)
             self.inv_table.setItem(i, 0, code_item)
             
@@ -424,9 +431,9 @@ class UserManagementDialog(QDialog):
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignCenter)
             if not is_used:
-                status_item.setForeground(QColor("#FFFF00")) # Yellow for active
+                status_item.setForeground(QColor(colors.get("warning", "#f59e0b"))) # Yellow for active
             else:
-                status_item.setForeground(QColor("#FF4444")) # Red for used
+                status_item.setForeground(QColor(colors.get("danger", "#ef4444"))) # Red for used
             self.inv_table.setItem(i, 3, status_item)
 
     def _on_reset_2fa(self, username):

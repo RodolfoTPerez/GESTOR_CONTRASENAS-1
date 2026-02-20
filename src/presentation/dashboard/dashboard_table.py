@@ -216,9 +216,9 @@ class DashboardTableManager:
 
                     # Col 7: PASSWORD
                     if secret_raw in ["ERROR 🔑", "[⚠️ Error de Llave]", "[Bloqueado 🔑]", "[NODO_PROTEGIDO]"]:
-                        pwd_text = "NODO_PROTEGIDO"; pwd_color = "#f87171"
+                        pwd_text = "NODO_PROTEGIDO"; pwd_color = colors.get("danger", "#f87171")
                     else:
-                        pwd_text = "••••••••"; pwd_color = "#94a3b8"
+                        pwd_text = "••••••••"; pwd_color = colors.get("text_dim", "#94a3b8")
                     
                     pwd_widget = QWidget()
                     pwd_widget.setAttribute(Qt.WA_TranslucentBackground)
@@ -914,7 +914,7 @@ class DashboardTableManager:
                     self.search_vault.setText("⚠️") 
                     try:
                         # Notificación táctica
-                        Notifications.show_toast(self, "AI Guardian", "PROTOCOLO DE REPARACIÓN ACTIVADO.\n\nLa bóveda ha sido filtrada para mostrar solo los nodos vulnerables detectados (⚠️).", "🛡️", "#f59e0b")
+                        Notifications.show_toast(self, "AI Guardian", "PROTOCOLO DE REPARACIÓN ACTIVADO.\n\nLa bóveda ha sido filtrada para mostrar solo los nodos vulnerables detectados (⚠️).", "🛡️", colors.get("warning", "#f59e0b"))
                     except Exception as e:
                         logger.debug(f"AI Guardian toast notification failed: {e}")
 
@@ -930,12 +930,12 @@ class DashboardTableManager:
              if hasattr(self, '_on_sync'): self._on_sync()
         
         else:
-            Notifications.show_toast(self, "AI Guardian", f"Acción '{action}' iniciada.", "🤖", "#06b6d4")
+            Notifications.show_toast(self, "AI Guardian", f"Acción '{action}' iniciada.", "🤖", colors.get("info", "#06b6d4"))
 
     def _show_ai_insight(self, insight_text):
         """Muestra un insight de IA en un diálogo no intrusivo."""
         from core.widgets.notifications import Notifications
-        Notifications.show_toast(self, "🧠 AI GUARDIAN: INSIGHT", insight_text, "🧠", "#8b5cf6", 8000)
+        Notifications.show_toast(self, "🧠 AI GUARDIAN: INSIGHT", insight_text, "🧠", colors.get("ai", "#8b5cf6"), 8000)
 
     def _on_ai_review(self, rec):
         """REVIEW: Muestra la razón técnica profunda."""

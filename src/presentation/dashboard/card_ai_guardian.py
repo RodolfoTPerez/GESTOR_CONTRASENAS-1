@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QWidget, QScrollArea, QFrame, QPushButton
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+import math
 from src.presentation.widgets.vultrax_base_card import VultraxBaseCard
 from src.presentation.widgets.threat_radar import ThreatRadarWidget
 from src.presentation.theme_manager import ThemeManager
@@ -8,15 +9,45 @@ from src.domain.messages import MESSAGES
 class AIGuardianCard(VultraxBaseCard):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(300)
+        self.setFixedHeight(340)
         self.setProperty("depth", "dashboard")
+        self._pulse_value = 0.0
         self._setup_ui()
+        
+        # [SENIOR FX] Pulse Timer for Critical Alerts
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.timeout.connect(self._update_pulse)
+        self._pulse_timer.start(50) # 20 FPS for smooth heartbeat
+        
         self.retranslateUi()
         self.refresh_styles()
+    
+    def _update_pulse(self):
+        """Modulates opacity for the 'heartbeat' effect based on a sine wave."""
+        self._pulse_value = (self._pulse_value + 0.15) % (2 * math.pi)
+        # Calculate alpha (0.4 to 1.0 range)
+        alpha = 0.7 + 0.3 * math.sin(self._pulse_value)
+        
+        # Apply to critical red dot
+        if hasattr(self, 'lbl_dot_indicator'):
+            self.lbl_dot_indicator.setStyleSheet(
+                f"color: rgba(239, 68, 68, {alpha}) !important; font-size: 14px !important; background: transparent !important;"
+            )
+        
+        # Apply to alert box border
+        if hasattr(self, 'alert_box'):
+            border_alpha = 0.2 + 0.2 * math.sin(self._pulse_value)
+            self.alert_box.setStyleSheet(f"""
+                QFrame {{
+                    background-color: rgba(220, 38, 38, 0.1) !important;
+                    border: 1px solid rgba(220, 38, 38, {border_alpha}) !important;
+                    border-radius: 6px !important;
+                }}
+            """)
 
     def _setup_ui(self):
         self.main_layout.setSpacing(12)
-        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setContentsMargins(20, 20, 20, 15)
 
         # 1. TACTICAL HEADER
         header_widget = QWidget()
@@ -44,21 +75,22 @@ class AIGuardianCard(VultraxBaseCard):
 
         # 2. MAIN CONTENT SPLIT
         content_layout = QHBoxLayout()
-        content_layout.setSpacing(20)
+        content_layout.setSpacing(15)
 
         # Left Side: The Radar
         self.radar_container = QFrame()
         self.radar_container.setObjectName("radar_glass_nest")
         rl = QVBoxLayout(self.radar_container)
         rl.setContentsMargins(0, 0, 0, 0)
-        rl.setAlignment(Qt.AlignCenter)
+        rl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
 
         self.ai_radar = ThreatRadarWidget()
-        self.ai_radar.setFixedSize(190, 190)
+        # [REFIX] Increased size to accommodate Spanish Labels and focused centering
+        self.ai_radar.setFixedSize(240, 240)
         self.ai_radar.doubleClicked.connect(self.doubleClicked.emit)
         rl.addWidget(self.ai_radar)
         
-        content_layout.addWidget(self.radar_container, 55)
+        content_layout.addWidget(self.radar_container, 60)
 
         # Right Side: Intel Feed & Stats
         info_panel = QWidget()
@@ -90,9 +122,9 @@ class AIGuardianCard(VultraxBaseCard):
         h_alert.setSpacing(8)
         
         # Red Dot Indicator
-        dot = QLabel("●")
-        dot.setStyleSheet("color: #ef4444 !important; font-size: 14px !important; background: transparent !important;")
-        h_alert.addWidget(dot)
+        self.lbl_dot_indicator = QLabel("●")
+        self.lbl_dot_indicator.setStyleSheet("color: #ef4444 !important; font-size: 14px !important; background: transparent !important;")
+        h_alert.addWidget(self.lbl_dot_indicator)
 
         self.lbl_alert_msg = QLabel()
         self.lbl_alert_msg.setStyleSheet("color: #f8fafc !important; font-size: 13px !important; font-weight: 700 !important; border: none !important; background: transparent !important;") 

@@ -8,17 +8,16 @@ class GhostExplanationDialog(QDialog):
     def __init__(self, title, metrics_data, parent=None):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Popup)
-        # [THEME FIX] Removed WA_TranslucentBackground to use solid theme colors
-        # self.setAttribute(Qt.WA_TranslucentBackground)  # ❌ This forced transparency
+        # [THEME RESTORED] Use transparency for Glass composition
+        self.setAttribute(Qt.WA_TranslucentBackground) 
         self.metrics_data = metrics_data 
         self.title_text = title
-        self.setFixedSize(500, 600) # Size for the explanation card
+        self.setFixedSize(500, 600) 
         
         self.theme = ThemeManager()
         
-        # [THEME FIX] Apply solid background color from theme BEFORE building UI
-        colors = self.theme.get_theme_colors()
-        self.setStyleSheet(f"QDialog {{ background-color: {colors['bg']}; }}")
+        # [THEME FIX] Set base dialog to transparent so children can composite
+        self.setStyleSheet("QDialog { background: transparent; border: none; }")
         
         self.setup_ui()
 
@@ -31,7 +30,7 @@ class GhostExplanationDialog(QDialog):
         self.container = QFrame()
         self.container.setObjectName("ghost_container")
         
-        # [THEME FIX] Use dynamic tokens for background and border
+        # [THEME FIX] Use dynamic tokens for background and border (@bg_sec_95 now supported)
         qss = """
             QFrame#ghost_container {
                 background-color: @bg_sec_95;

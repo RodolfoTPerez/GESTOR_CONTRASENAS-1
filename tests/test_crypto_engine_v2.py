@@ -74,8 +74,9 @@ def test_vault_key_wrapping_roundtrip():
     assert len(wrapped) == 12 + 32 + 16  # Nonce(12) + Key(32) + Tag(16) = 60 bytes
     
     # Unwrap (Recuperar original)
-    unwrapped = CryptoEngine.unwrap_vault_key(wrapped, user_pwd, user_salt)
+    unwrapped, algo = CryptoEngine.unwrap_vault_key(wrapped, user_pwd, user_salt)
     assert unwrapped == vault_key
+    assert algo in ["argon2id", "pbkdf2"]
     
     # Fallo con password incorrecta
     with pytest.raises(ValueError, match="Error de autenticación"):
@@ -96,8 +97,9 @@ def test_ultra_recovery_legacy_iterations():
     wrapped_legacy = nonce + ciphertext
     
     # unwrap_vault_key debe detectar y recuperar esto automáticamente mediante el loop de recuperación
-    unwrapped = CryptoEngine.unwrap_vault_key(wrapped_legacy, user_pwd, user_salt)
+    unwrapped, algo = CryptoEngine.unwrap_vault_key(wrapped_legacy, user_pwd, user_salt)
     assert unwrapped == vault_key
+    assert algo == "pbkdf2"
 
 def test_rate_limiter_protection():
     """Verifica que la protección contra fuerza bruta en unwrap funcione."""

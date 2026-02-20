@@ -609,3 +609,13 @@ Las operativas al centro
 Las informativas abajo
 
 
+as tarjetas que están actualmente definidas y activas en tu Dashboard son:
+
+SystemOverviewCard (Estado Global de Seguridad)
+SystemHealthCard (System Health)
+PasswordHealthCard (Password Health)
+SecurityWatchCard (Security Watch)
+AIGuardianCard (AI Guardian)
+GlassCard (Utilizada para las Quick Actions / Botones de abajo)
+2026-02-11 
+

@@ -58,7 +58,8 @@ class TwoFactorSetupDialog(QDialog):
         self.qr_container.setObjectName("QRContainer")
         self.qr_container.setFixedSize(340, 340)
         # El QRContainer debe ser blanco para que el QR sea escaneable
-        self.qr_container.setStyleSheet("background-color: white; border-radius: 20px; border: 4px solid #3b82f6;")
+        # El QRContainer debe ser blanco para que el QR sea escaneable
+        self.qr_container.setStyleSheet(self.theme.apply_tokens("background-color: white; border-radius: 20px; border: 4px solid @primary;"))
         qr_cont_layout = QVBoxLayout(self.qr_container)
         qr_cont_layout.setAlignment(Qt.AlignCenter)
         qr_cont_layout.setContentsMargins(0, 0, 0, 0)
@@ -72,7 +73,7 @@ class TwoFactorSetupDialog(QDialog):
 
         # Secret Text (Manual Entry)
         lbl_manual = QLabel(f"{MESSAGES.TWOFACTOR.SETUP_MANUAL}\n{self.temp_secret}")
-        lbl_manual.setStyleSheet("color: #a1a1aa; font-family: monospace; font-size: 12px;")
+        lbl_manual.setStyleSheet(self.theme.apply_tokens("color: @text_dim; font-family: monospace; font-size: 12px;"))
         lbl_manual.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_manual)
         

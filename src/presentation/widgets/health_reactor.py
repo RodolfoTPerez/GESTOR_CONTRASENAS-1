@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QRectF
-from PyQt5.QtGui import QPainter, QColor, QFont, QPen
+from PyQt5.QtGui import QPainter, QColor, QFont, QPen, QBrush
 from src.presentation.theme_manager import ThemeManager
 
 class HealthReactorWidget(QWidget):
@@ -27,53 +27,61 @@ class HealthReactorWidget(QWidget):
 
     def paintEvent(self, event):
         colors = self.theme.get_theme_colors()
+        is_ghost = self.property("ghost") == "true"
+        dimmer = getattr(self.theme, '_GLOBAL_OPACITY', 1.0)
+        
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        rect = self.rect().adjusted(8, 8, -8, -8)
-        width = 10
+        rect = self.rect().adjusted(12, 12, -12, -12)
+        center = rect.center()
+        width = 12
         
-        # 1. Background Track
-        # Use a theme-aware track color (faint border or dim text dimmed further)
-        track_col = QColor(colors.get("border", "#1e293b"))
-        track_col.setAlpha(40) 
-        painter.setPen(QPen(track_col, width, Qt.SolidLine, Qt.RoundCap))
-        painter.drawArc(rect, -45 * 16, 270 * 16)
-        
-        # 2. Active Gauge Arc
-        is_ghost = self.property("ghost") == "true"
-        color = QColor(self.primary_color)
-        
-        pen_color = QColor(self.primary_color)
-        if is_ghost: pen_color.setAlpha(204) # 80% Vibrant Arc (Senior: Increased from 60%)
-        pen = QPen(pen_color, width, Qt.SolidLine, Qt.RoundCap)
-        painter.setPen(pen)
-        
-        span = int((self.health_score / 100.0) * 270 * 16)
-        painter.drawArc(rect, 225 * 16, -span)
-
-        # 3. Center Text
+        # 1. TACTICAL HEXAGON-ISH BACKGROUND (Concave Effect)
+        bg_col = QColor(colors.get("card_bg", "rgba(15, 23, 42, 0.4)"))
+        bg_col.setAlpha(int(30 * dimmer))
+        painter.setBrush(QBrush(bg_col))
         painter.setPen(Qt.NoPen)
-        font_score = QFont("Segoe UI", 26, QFont.Bold)
+        painter.drawEllipse(center, self.width()/2 - 10, self.height()/2 - 10)
+
+        # 2. BACKGROUND TRACK (Tenue)
+        track_col = QColor(colors.get("text_dim", "#94a3b8"))
+        track_col.setAlpha(int(40 * dimmer))
+        painter.setPen(QPen(track_col, width, Qt.SolidLine, Qt.RoundCap))
+        painter.drawArc(rect, 225 * 16, -270 * 16)
+        
+        # 3. MULTI-LAYERED ACTIVE ARC (HIFI NEON)
+        color = QColor(self.primary_color)
+        span = int((self.health_score / 100.0) * 270 * 16)
+        start_angle = 225 * 16
+        
+        # Layer A: Massive Outer Bloom
+        glow_1 = QColor(color)
+        glow_1.setAlpha(int(40 * dimmer))
+        painter.setPen(QPen(glow_1, width * 1.8, Qt.SolidLine, Qt.RoundCap))
+        painter.drawArc(rect, start_angle, -span)
+        
+        # Layer B: Focused Core Glow
+        glow_2 = QColor(color)
+        glow_2.setAlpha(int(90 * dimmer))
+        painter.setPen(QPen(glow_2, width * 1.6, Qt.SolidLine, Qt.RoundCap))
+        painter.drawArc(rect, start_angle, -span)
+
+        # Layer C: Primary Arc
+        core_col = QColor(color)
+        core_col.setAlpha(int(220 * dimmer))
+        painter.setPen(QPen(core_col, width, Qt.SolidLine, Qt.RoundCap))
+        painter.drawArc(rect, start_angle, -span)
+
+        # 4. CENTER HUD (Refined Stats)
+        painter.setPen(Qt.NoPen)
+        
+        # Main Score
+        font_score = QFont("Consolas", 28, QFont.Bold)
         painter.setFont(font_score)
-        
-        # [FIX] Use Theme Text Color instead of hardcoded white
         text_color = QColor(colors["text"])
-        if is_ghost: text_color.setAlpha(204) # 80% Center Score
+        text_color.setAlpha(int(230 * dimmer))
         painter.setPen(text_color)
-        
-        number_rect = QRectF(0, 30, self.width(), 45)
-        painter.drawText(number_rect, Qt.AlignCenter, str(self.health_score))
-        
-        # Subtitle "SCORE"
-        font_sub = QFont("Segoe UI", 8, QFont.Bold)
-        font_sub.setLetterSpacing(QFont.AbsoluteSpacing, 1.0)
-        painter.setFont(font_sub)
-        
-        # [FIX] Use Theme Dim Color
-        sub_color = QColor(colors["text_dim"])
-        if is_ghost: sub_color.setAlpha(128) # 50% Metadata label (Senior: Increased from 30%)
-        painter.setPen(sub_color)
-        
-        sub_rect = QRectF(0, 75, self.width(), 20)
-        painter.drawText(sub_rect, Qt.AlignCenter, "SCORE")
+        # Perfectly centered in the middle of the widget
+        painter.drawText(self.rect(), Qt.AlignCenter, str(self.health_score))
+

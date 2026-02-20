@@ -200,10 +200,7 @@ class SetupWizard(QDialog):
             }).execute()
             self.logger.info(f"Master Vault configured with UUID {v_id}")
             
-            # Intento opcional en vault_groups por si acaso
-            try: self.um.supabase.table("vault_groups").upsert({"id": 1, "vault_name": instance_name, "vault_master_key": os.urandom(32).hex()}).execute()
-            except Exception as e:
-                self.logger.debug(f"Optional vault_groups setup skipped: {e}")
+            # The modern system uses the 'vaults' table. 'vault_groups' is legacy.
         except Exception as e:
             self.logger.error(f"Wizard Error: {e}")
             # Error handling for vault creation
