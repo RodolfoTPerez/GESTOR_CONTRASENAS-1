@@ -1,33 +1,37 @@
-﻿# Python
-venv/
-.venv/
+﻿# Python & Interpret
 __pycache__/
 *.pyc
 *.pyo
-*.swp
-
-# Credentials & Config
-.env
-.env.local
-global_settings.ini
-
-# Database & Cache
-*.db
-*.sqlite3
+*.pyd
 .pytest_cache/
 .agent/
 .gemini/
+venv/
+.venv/
+
+# Environment & Credentials
+.env
+.env.*
+!.env.example
+global_settings.ini
+
+# Database & Sensitive Data (MANDATORY BLOCK)
+data/
+archive/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+*.bak
 
 # Logs
+logs/
 *.log
 debug.log
 
-# Data/Archive (Sensitive)
-archive/*.json
-archive/*.txt
-archive/*.pdf
-archive/*.db
-
-# OS
+# IDE & OS
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
+desktop.ini
