@@ -68,6 +68,11 @@ class ConnectivityLED(QWidget):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._rotate)
         self._timer.start(30) # 33 FPS aprox
+        
+        # [SENIOR FIX] Asegurar transparencia absoluta para evitar el "cuadro blanco"
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+        self.theme = ThemeManager()
 
     def set_state(self, is_online):
         self._online = is_online
@@ -85,24 +90,27 @@ class ConnectivityLED(QWidget):
         center = rect.center()
         radius = rect.width() / 2
         
+        # Obtener colores del tema dinámicamente
+        colors = self.theme.get_theme_colors()
+        success_col = QColor(colors.get("success", "#00ffff"))
+        warning_col = QColor(colors.get("warning", "#ff5000"))
+        
         # Glow Fluorescente
         glow = QRadialGradient(center, radius + 4)
         if self._online:
-            base_col = QColor(0, 255, 255) # Cian Neón
-            glow.setColorAt(0, QColor(0, 255, 255, 200))
-            glow.setColorAt(0.5, QColor(0, 150, 255, 100))
+            base_col = success_col
+            glow.setColorAt(0, success_col)
             glow.setColorAt(1, Qt.transparent)
         else:
-            base_col = QColor(255, 50, 0) # Naranja/Rojo Neón
-            glow.setColorAt(0, QColor(255, 80, 0, 200))
-            glow.setColorAt(0.5, QColor(200, 0, 0, 100))
+            base_col = warning_col
+            glow.setColorAt(0, warning_col)
             glow.setColorAt(1, Qt.transparent)
             
         painter.setBrush(glow)
         painter.setPen(Qt.NoPen)
         painter.drawEllipse(self.rect())
         
-        # Efecto Giratorio (Cónico)
+        # Efecto Giratorio
         rot_grad = QConicalGradient(center, self._angle)
         rot_grad.setColorAt(0, base_col)
         rot_grad.setColorAt(0.2, Qt.transparent)
@@ -111,14 +119,16 @@ class ConnectivityLED(QWidget):
         painter.setBrush(rot_grad)
         painter.drawEllipse(rect)
         
-        # Punto Central Intenso
-        painter.setBrush(QColor(255, 255, 255, 200))
+        # Punto Central
+        painter.setBrush(QColor(255, 255, 255, 220))
         painter.drawEllipse(center, 2, 2)
 
 class LoginView(QMainWindow):
     def __init__(self, user_manager=None, prefill_user=None, on_success=None):
         super().__init__()
-        from src.infrastructure.user_manager import UserManager
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
         self.user_manager = user_manager if isinstance(user_manager, UserManager) else UserManager()
         self.on_login_success = on_success if on_success else (user_manager if callable(user_manager) else None)
         
@@ -126,27 +136,16 @@ class LoginView(QMainWindow):
         self.failed_attempts = 0
         self.locked_until = None
         self.reg_mode = False
-        self._drag_pos = None  # Initialize drag position for window dragging
+        self._drag_pos = None
 
         self.logger = logging.getLogger(__name__)
 
         self._init_ui()
-        self.reg_mode = False
-        self.failed_attempts = 0
-        self.locked_until = None
-        
-        # Revelar tras construcción
-        QTimer.singleShot(50, lambda: self.setWindowOpacity(1.0))
-
-        # --- WINDOW SETUP ---
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.resize(1000, 650)
-        self.center_on_screen()
-
-        self._init_ui()
         self._apply_branding()
         self._init_inactivity_timer()
+
+        self.resize(1000, 650)
+        self.center_on_screen()
 
     def _init_inactivity_timer(self):
         """Inicia el protocolo de inactividad de forma segura (Watcher Externo)."""
@@ -217,6 +216,7 @@ class LoginView(QMainWindow):
         # 1. EL CONTENEDOR TIPO TARJETA (Glass Card)
         self.card = QFrame()
         self.card.setObjectName("MainCard")
+        # ELIMINADO WA_NoSystemBackground para asegurar visibilidad
         self.card.setFixedSize(460, 800) # Maximum vertical space to avoid all clipping
         
         shadow = QGraphicsDropShadowEffect(self)
@@ -234,6 +234,7 @@ class LoginView(QMainWindow):
         # --- HEADER AREA (Logo + Controls) ---
         header_area = QFrame()
         header_area.setObjectName("HeaderArea")
+        # ELIMINADO WA_NoSystemBackground
         header_area.setFixedHeight(350) # Massive space to ensure no clipping
         header_vbox = QVBoxLayout(header_area)
         header_vbox.setContentsMargins(20, 10, 20, 0) # Tight top margin for the controls row
@@ -244,15 +245,17 @@ class LoginView(QMainWindow):
         # Connectivity Monitor (LED)
         self.conn_widget = QWidget()
         self.conn_widget.setFixedSize(120, 40)
-        self.conn_widget.setObjectName("ConnMonitor")
+        self.conn_widget.setObjectName("conn_monitor")
+        self.conn_widget.setAttribute(Qt.WA_TranslucentBackground)
         conn_layout = QHBoxLayout(self.conn_widget)
         conn_layout.setContentsMargins(10, 0, 10, 0)
         
         self.conn_led = ConnectivityLED()
+        self.conn_led.setObjectName("conn_led") # ID añadido para match QSS
         
         self.conn_label = QLabel("SYSTEM ONLINE")
-        self.conn_label.setObjectName("ConnLabel")
-        self.conn_label.setStyleSheet("color: #00ffff; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
+        self.conn_label.setObjectName("conn_label")
+        self.conn_label.setProperty("status", "online")
         
         conn_layout.addWidget(self.conn_led)
         conn_layout.addWidget(self.conn_label)
@@ -279,6 +282,8 @@ class LoginView(QMainWindow):
         self.logo_label.setFixedSize(160, 120) # More compact container
         self.logo_label.setAlignment(Qt.AlignCenter)
         self.logo_label.setStyleSheet("border: none; background: transparent;")
+        self.logo_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.logo_label.customContextMenuRequested.connect(self._open_maintenance_menu)
         
         from src.infrastructure.config.path_manager import PathManager
         custom_logo = PathManager.DATA_DIR / "custom_logo.png"
@@ -377,7 +382,7 @@ class LoginView(QMainWindow):
         
         # Status Footer
         self.lbl_version = QLabel("PRO VERSION v2.2")
-        self.lbl_version.setStyleSheet("color: rgba(255,255,255,0.2); font-size: 9px; font-weight: bold;")
+        self.lbl_version.setStyleSheet(self.theme_manager.apply_tokens("color: @text_dim; font-size: 9px; font-weight: bold;"))
         self.lbl_version.setAlignment(Qt.AlignCenter)
         
         card_layout.addStretch(1) # Ensure footer stays at the absolute bottom
@@ -397,23 +402,28 @@ class LoginView(QMainWindow):
             # Simple check to a reliable DNS or Supabase host
             socket.create_connection(("8.8.8.8", 53), timeout=2)
             self.conn_led.set_state(True)
-            self.conn_label.setText("SYSTEM ONLINE")
-            self.conn_label.setStyleSheet("color: #00ffff; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
+            if self.conn_label.text() != "SYSTEM ONLINE":
+                self.conn_label.setText("SYSTEM ONLINE")
+                self.conn_label.setProperty("status", "online")
+                self.conn_label.style().unpolish(self.conn_label)
+                self.conn_label.style().polish(self.conn_label)
         except:
             self.conn_led.set_state(False)
-            self.conn_label.setText("LOCAL MODE")
-            self.conn_label.setStyleSheet("color: #ff5000; font-family: 'Consolas'; font-size: 10px; font-weight: bold;")
+            if self.conn_label.text() != "LOCAL MODE":
+                self.conn_label.setText("LOCAL MODE")
+                self.conn_label.setProperty("status", "offline")
+                self.conn_label.style().unpolish(self.conn_label)
+                self.conn_label.style().polish(self.conn_label)
 
     def _apply_branding(self):
         instance_name = self.user_manager.sm.get_meta("instance_name") or "VULTRAX CORE"
         self.app_title.setText(instance_name.upper())
 
         if self.prefill_user:
-            self.welcome_label.setText(str(MESSAGES.LOGIN.LOCKED_TITLE).upper())
             self.subtitle_label.setText(MESSAGES.LOGIN.UNLOCKING.format(user=self.prefill_user))
             self.username_input.setText(self.prefill_user)
             self.username_input.setReadOnly(True)
-            self.username_input.setStyleSheet("border: 2px solid @ghost_border; border-radius: 8px; padding: 0 15px; background: rgba(30, 41, 59, 0.4); color: #64748b;")
+            self.username_input.setProperty("locked", True)
             self.password_input.setFocus()
             
             # Hide unnecessary links in locked state
@@ -460,6 +470,12 @@ class LoginView(QMainWindow):
         """Muestra un diálogo informativo sobre la recuperación de cuenta."""
         from src.presentation.dialogs.recovery_dialog import AccountRecoveryDialog
         dlg = AccountRecoveryDialog(self)
+        dlg.exec_()
+
+    def _open_maintenance_menu(self):
+        """Abre el terminal de mantenimiento táctico (Acceso por click derecho)."""
+        from src.presentation.dialogs.maintenance_dialog import MaintenanceDialog
+        dlg = MaintenanceDialog(self.user_manager.sm, self)
         dlg.exec_()
 
     def fade_and_close(self):

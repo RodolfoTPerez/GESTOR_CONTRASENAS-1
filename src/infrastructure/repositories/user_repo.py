@@ -47,8 +47,9 @@ class UserRepository:
     def save_profile(self, username: str, pwd_hash: str, salt: str, vault_salt: Optional[bytes], 
                      role: str = "user", protected_key: Optional[bytes] = None, 
                      totp_secret: Optional[str] = None, vault_id: Optional[str] = None, 
-                     wrapped_vault_key: Optional[bytes] = None, user_id: Optional[str] = None) -> None:
-        cols = ["username", "password_hash", "salt", "vault_salt", "role", "protected_key", "totp_secret", "vault_id", "wrapped_vault_key", "user_id"]
+                     wrapped_vault_key: Optional[bytes] = None, user_id: Optional[str] = None,
+                     kdf_version: int = 1) -> None:
+        cols = ["username", "password_hash", "salt", "vault_salt", "role", "protected_key", "totp_secret", "vault_id", "wrapped_vault_key", "user_id", "kdf_version"]
         
         # Binary data handling
         v_salt_bin = sqlite3.Binary(vault_salt) if vault_salt else None
@@ -56,7 +57,7 @@ class UserRepository:
         w_vk_bin = sqlite3.Binary(wrapped_vault_key) if wrapped_vault_key else None
         totp_text = str(totp_secret) if totp_secret else None
         
-        vals = [str(username).upper().strip().replace(" ", ""), pwd_hash, salt, v_salt_bin, role, p_key_bin, totp_text, vault_id, w_vk_bin, user_id]
+        vals = [str(username).upper().strip().replace(" ", ""), pwd_hash, salt, v_salt_bin, role, p_key_bin, totp_text, vault_id, w_vk_bin, user_id, kdf_version]
         placeholders = ", ".join(["?"] * len(vals))
         self.db.execute(f"INSERT OR REPLACE INTO users ({', '.join(cols)}) VALUES ({placeholders})", tuple(vals))
         self.db.commit()
@@ -91,14 +92,25 @@ class UserRepository:
         """Persists or updates access to a specific vault with conflict resolution."""
         try:
             import time
+            if isinstance(wrapped_key, str):
+                wrapped_key = bytes.fromhex(wrapped_key)
+            
+            # [SILENCE SYNC LOOP] 
+            # Verificar si ya tenemos esta misma llave para evitar logs y escrituras redundantes
+            existing = self.get_vault_access(vault_id)
+            if existing:
+                current_wrapped = existing.get("wrapped_master_key")
+                if isinstance(current_wrapped, str): current_wrapped = bytes.fromhex(current_wrapped)
+                
+                # Si la llave es idéntica y no estamos forzando, ignoramos la operación
+                if current_wrapped == wrapped_key and not force:
+                    return True
+
             # [NUCLEAR SYNC FIX] 
             # We no longer reject cloud overwrites. If the cloud (synced=1) has a key,
             # we accept it as the source of truth to heal local corruption.
             if synced == 1:
-                logger.info(f"Applying Cloud Master Key for vault {vault_id} (Forced Sync)")
-            
-            if isinstance(wrapped_key, str):
-                wrapped_key = bytes.fromhex(wrapped_key)
+                logger.info(f"[Sync] Applying Cloud Master Key for vault {vault_id} (Forced Sync)")
             
             # Upsert logic
             now = int(time.time())
@@ -160,4 +172,17 @@ class UserRepository:
             return True
         except Exception as e:
             logger.error(f"Error updating wrapped vault key for '{username}': {e}")
+            return False
+
+    def update_password_hash(self, username: str, new_hash: str, new_salt: bytes, kdf_version: int = 2) -> bool:
+        """Updates the password hash and salt for the user (Migration support)."""
+        try:
+            self.db.execute(
+                "UPDATE users SET password_hash = ?, salt = ?, kdf_version = ? WHERE UPPER(username) = ?",
+                (new_hash, sqlite3.Binary(new_salt), kdf_version, str(username).upper())
+            )
+            self.db.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating password hash for '{username}': {e}")
             return False

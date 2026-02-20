@@ -29,14 +29,9 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         super().__init__(parent)
         
         # [ESTRATEGIA TOTAL DARKNESS]
-        # 1. Congelar pintura antes de que el SO vea nada
-        self.setUpdatesEnabled(False)
-        self.setWindowOpacity(0.0)
-        
-        # 2. Atributos de prohibición de fondo blanco
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_StyledBackground, True) # [SENIOR FIX] Ensure background is painted
-        # self.setAttribute(Qt.WA_OpaquePaintEvent, True) # DISABLE Opaque to allow composition if needed
+        # Eliminados bloqueos de pintura para evitar el "destello de revelado"
+        self.setWindowOpacity(1.0)
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
 
         
@@ -57,6 +52,10 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         self.user_role = self.current_role
         self.sm.user_role = self.current_role.lower()
 
+        # [SECURITY] Register absolute session purge on process exit
+        import atexit
+        atexit.register(self.sm.session.clear)
+
         from src.infrastructure.config.path_manager import PathManager
         self.settings = QSettings(ThemeManager.APP_ID, f"VultraxCore_{self.current_username}")
         self.global_settings = QSettings(str(PathManager.GLOBAL_SETTINGS_INI), QSettings.IniFormat)
@@ -69,23 +68,29 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             MESSAGES.LANG = user_lang
             logger.info(f"Language Synced: {user_lang} for {self.current_username}")
         
-        # [THEME-PER-USER FIX] Load and apply theme
+        # [THEME-PER-USER FIX] Load and individualize theme
         saved_theme = self.settings.value("theme_active") or self.global_settings.value("theme_active", "tactical_dark")
-        self.theme_manager.theme_changed.connect(lambda: self.theme_manager.apply_app_theme(QApplication.instance()))
-        self.theme_manager.theme_changed.connect(self._refresh_all_widget_themes)
         
-        # [SENIOR FIX] Connect dynamic background update to theme changes
-        self.theme_manager.theme_changed.connect(self._apply_root_background)
+        # [SENIOR FIX] Set the theme FIRST without triggering signals
+        self.theme_manager.current_theme = saved_theme
+        ThemeManager._GLOBAL_THEME = saved_theme
         
-        self.theme_manager.set_theme(saved_theme)
-        
-        # Initialize background immediately
+        # Initialize background immediately (Quietly)
         self._apply_root_background()
         
+        # Now connect signals for future changes
+        self.theme_manager.theme_changed.connect(lambda: self.theme_manager.apply_app_theme(QApplication.instance()))
+        self.theme_manager.theme_changed.connect(self._refresh_all_widget_themes)
+        self.theme_manager.theme_changed.connect(self._apply_root_background)
+        
+        # Force a SINGLE application if the theme is different from what main.py loaded
         self.theme_manager.apply_app_theme(QApplication.instance())
         self._refresh_all_widget_themes()
         
-        # [RECURSION PROTECTION] Move window setup from showEvent to __init__
+        # [PERFORMANCE] Search Debouncing Engine
+        self.audit_search_timer = QTimer(self)
+        self.audit_search_timer.setSingleShot(True)
+        self.audit_search_timer.timeout.connect(lambda: self._load_table_audit())
         self.setWindowFlags(Qt.Window)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         self._is_showing_maximized = False
@@ -127,11 +132,9 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             self.watcher.timeout_changed.connect(self._on_timeout_duration_changed)
 
         # [REVEAL DASHBOARD] 
-        # Forzamos una pintura final en la sombra antes de revelar
-        QApplication.processEvents()
-        self.setUpdatesEnabled(True)
-        # Delay estratégico de 200ms para asegurar que el hardware asiente el color oscuro
-        QTimer.singleShot(200, lambda: self.setWindowOpacity(1.0))
+        # Ahora que el login se oculta instantáneamente, el Dashboard puede aparecer directo
+        # sin timers de opacidad que generen parpadeos de composición.
+        self.setWindowOpacity(1.0)
     
         # --- Hilo de conectividad ---
         self.conn_worker = ConnectivityWorker(self.sync_manager, self.sm)
@@ -284,6 +287,11 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
 
         super().keyPressEvent(event)
 
+    def _trigger_audit_search(self):
+        """Reinicia el timer de búsqueda para evitar lag al escribir (Debounce)."""
+        if hasattr(self, 'audit_search_timer'):
+            self.audit_search_timer.start(350) # Espera 350ms de calma antes de procesar
+
     def _connect_ui_signals(self):
         """Conecta cada botón de la nueva interfaz modular con su lógica en DashboardActions."""
         if hasattr(self, 'nav_group'):
@@ -356,6 +364,10 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
         if hasattr(self, 'btn_mod_adm'): self.btn_mod_adm.clicked.connect(lambda: self._load_table_audit())
         if hasattr(self, 'btn_mod_global'): self.btn_mod_global.clicked.connect(lambda: self._load_table_audit())
 
+        # Activity Search Live (Debounced)
+        if hasattr(self, 'search_audit'):
+            self.search_audit.textChanged.connect(self._trigger_audit_search)
+
         # Recent Activity Card Filters (Synchronization Fix)
         # [UI CLEANUP] Side panel removed, filters preserved only in Activity Module.
 
@@ -376,6 +388,7 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             def go_activity():
                 self.main_stack.setCurrentWidget(self.view_activity)
                 self.btn_nav_activity.setChecked(True)
+                if hasattr(self, '_load_table_audit'): self._load_table_audit()
             self.btn_go_activity.clicked.connect(go_activity)
             
         if hasattr(self, 'btn_go_ai'): 
@@ -438,10 +451,13 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             self.main_stack.setCurrentWidget(self.view_dashboard)
         elif index == 1:
             self.main_stack.setCurrentWidget(self.view_vault)
+            if hasattr(self, '_load_table'): self._load_table()
         elif index == 2:
             self.main_stack.setCurrentWidget(self.view_ai)
         elif index == 3:
             self.main_stack.setCurrentWidget(self.view_activity)
+            if hasattr(self, '_load_table_audit'): self._load_table_audit()
+            if hasattr(self, 'search_audit'): self.search_audit.setFocus()
         elif index == 4:
             self.main_stack.setCurrentWidget(self.view_users)
         elif index == 5:
@@ -1457,7 +1473,11 @@ class DashboardView(QWidget, DashboardUI, DashboardActions, DashboardTableManage
             logger.debug(f"Final logout heartbeat failed: {e}")
         
         
-        logger.info("Vault closed correctly.")
+        # [SECURITY] PHYSICAL ZEROING OF ALL SENSITIVE KEYS
+        if hasattr(self, 'sm') and hasattr(self.sm, 'session'):
+            self.sm.session.clear()
+            
+        logger.info("Vault closed correctly and RAM zeroed.")
 
     def _apply_root_background(self):
         """

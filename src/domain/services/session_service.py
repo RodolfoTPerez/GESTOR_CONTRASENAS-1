@@ -1,15 +1,15 @@
 import uuid
 import logging
 import threading
-from typing import Optional, Any
+from typing import Optional, Any, Dict
+from src.infrastructure.secure_memory import SecureBytes
 
 logger = logging.getLogger(__name__)
 
 class SessionService:
     """
     Manages the active user context and security keys in RAM.
-    Implements Zeroing memory logic for keys.
-    Thread-safe implementation using RLock and operation tracking.
+    Implements Military-Grade Zeroing memory logic for keys via SecureBytes.
     """
     def __init__(self) -> None:
         # Thread synchronization
@@ -23,11 +23,11 @@ class SessionService:
         self.current_vault_id: Optional[str] = None
         self.session_id: str = str(uuid.uuid4())
         
-        # RAM Keys (Sensitive) - Protected by lock
-        self._personal_key: Optional[bytearray] = None
-        self._vault_key: Optional[bytearray] = None
-        self._master_key: Optional[bytearray] = None
-        self.kek_candidates: dict[str, Any] = {}
+        # Security Containers
+        self._personal_key: Optional[SecureBytes] = None
+        self._vault_key: Optional[SecureBytes] = None
+        self._master_key: Optional[SecureBytes] = None
+        self.kek_candidates: Dict[str, SecureBytes] = {}
 
     def start_operation(self):
         """Signals that a sensitive operation (like sync) is starting."""
@@ -43,32 +43,35 @@ class SessionService:
     @property
     def personal_key(self) -> Optional[bytearray]:
         with self._lock:
-            return self._personal_key
+            return self._personal_key.get_raw() if self._personal_key else None
     
     @personal_key.setter
-    def personal_key(self, value: Optional[bytearray]) -> None:
+    def personal_key(self, value: Any) -> None:
         with self._lock:
-            self._personal_key = value
+            if self._personal_key: self._personal_key.clear()
+            self._personal_key = SecureBytes(value) if value else None
     
     @property
     def vault_key(self) -> Optional[bytearray]:
         with self._lock:
-            return self._vault_key
+            return self._vault_key.get_raw() if self._vault_key else None
     
     @vault_key.setter
-    def vault_key(self, value: Optional[bytearray]) -> None:
+    def vault_key(self, value: Any) -> None:
         with self._lock:
-            self._vault_key = value
+            if self._vault_key: self._vault_key.clear()
+            self._vault_key = SecureBytes(value) if value else None
     
     @property
     def master_key(self) -> Optional[bytearray]:
         with self._lock:
-            return self._master_key
+            return self._master_key.get_raw() if self._master_key else None
     
     @master_key.setter
-    def master_key(self, value: Optional[bytearray]) -> None:
+    def master_key(self, value: Any) -> None:
         with self._lock:
-            self._master_key = value
+            if self._master_key: self._master_key.clear()
+            self._master_key = SecureBytes(value) if value else None
 
     def set_user(self, username: str, user_id: str, role: str, vault_id: Optional[str]) -> None:
         with self._lock:
@@ -79,35 +82,26 @@ class SessionService:
             self.session_id = str(uuid.uuid4())
 
     def clear(self) -> None:
-        """
-        Purges session and zeroes keys in memory.
-        If background operations are active, it defers key zeroing to prevent crashes.
-        """
+        """Purges session and physically zeroes keys using SecureBytes."""
         with self._lock:
             if self._active_ops > 0:
                 logger.warning(f"Session clear requested while {self._active_ops} ops active. Postponing full zeroing.")
-                self.current_user = None # Mark as logged out but keep keys for active ops
+                self.current_user = None
                 return
 
-            # Security: Zeroing out sensitive keys in memory
-            for key_attr in ["_master_key", "_personal_key", "_vault_key"]:
-                key_obj = getattr(self, key_attr, None)
-                if isinstance(key_obj, bytearray):
-                    for i in range(len(key_obj)):
-                        key_obj[i] = 0
-                    setattr(self, key_attr, None)
+            # Zeroing containers
+            if self._master_key: self._master_key.clear(); self._master_key = None
+            if self._personal_key: self._personal_key.clear(); self._personal_key = None
+            if self._vault_key: self._vault_key.clear(); self._vault_key = None
             
-            if self.kek_candidates:
-                for label, key_obj in self.kek_candidates.items():
-                    if isinstance(key_obj, (bytearray, bytes)):
-                        # If it's a bytearray, zero it out. If it's bytes, we replace it.
-                        # (Ideally everything should be bytearray for security)
-                        if isinstance(key_obj, bytearray):
-                            for i in range(len(key_obj)):
-                                key_obj[i] = 0
-                self.kek_candidates = {}
+            for k in self.kek_candidates.values():
+                if hasattr(k, 'clear'):
+                    k.clear()
+            self.kek_candidates = {}
 
             self.current_user = None
             self.current_user_id = None
             self.session_id = str(uuid.uuid4())
-            logger.info("Session context purged and zeroed.")
+            
+            import gc; gc.collect()
+            logger.info("[Security] Session context purged and zeroed securely.")

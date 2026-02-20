@@ -142,10 +142,29 @@ class SecretsManager:
     def _initialize_db(self, name: str) -> None:
         self.db._initialize_db(name)
 
+    def nuclear_reset(self) -> int:
+        """Removes local state to force cloud sync. Destructive."""
+        from src.domain.services.maintenance_service import MaintenanceService
+        return MaintenanceService.nuke_local_state()
+
+    def repair_vault_key(self, username: str, password: str) -> bool:
+        """Attempts to regenerate a vault key for a specific user."""
+        from src.domain.services.maintenance_service import MaintenanceService
+        return MaintenanceService.repair_vault_key(username, password, self.db)
+
     def reconnect(self, username: str) -> None:
-        logger.info(f"[DEBUG] Attempting to reconnect for {username}...")
+        """Cambia el contexto de base de datos de forma segura, con guarda anti-redundancia."""
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '', str(username).lower().strip())
+        current_db = self.db.db_path.name if self.db and self.db.db_path else ""
+        
+        # [GUARD] Si ya estamos conectados a esta DB, no perdemos tiempo reconectando
+        if f"vault_{safe_name}.db" == current_db or (safe_name == "vultrax" and current_db == "vultrax.db"):
+            logger.debug(f"[Sync] Already connected to database for {username}. Skipping reconnect.")
+            return
+
+        logger.info(f"[Sync] Switching database context to {username}...")
         self._initialize_db(username)
-        logger.info(f"[DEBUG] Reconnected for {username}.")
+        logger.info(f"[Sync] Context switched successfully.")
 
     # --- USER & SESSION ---
     def get_local_user_profile(self, username: str) -> Optional[Dict[str, Any]]: 
@@ -184,9 +203,78 @@ class SecretsManager:
         # 3. Vault Key Acquisition (with fallback and healing)
         self._acquire_vault_key(new_user, password, v_salt, profile)
 
-        # 4. Finalize Session
+        # 4. Finalize Session (with Silent Security Upgrade for Password Hash)
         self.session.master_key = self.session.personal_key or self.session.vault_key or kek
+        
+        # [SECURITY UPGRADE] Migrate security context to Argon2id if it's currently PBKDF2
+        self._migrate_security_context_to_argon2(new_user, password, profile)
+        
         logger.info(f"Session Started: {self.session.current_user} | ID: {self.session.session_id}")
+
+    def _migrate_security_context_to_argon2(self, username: str, password: str, profile: Dict[str, Any]) -> None:
+        """
+        [ETAPA 2 PLUS] Migrates user security context to Argon2id.
+        Handles both Password Hash upgrade AND Vault Key Re-Wrap.
+        """
+        from src.infrastructure.crypto_engine import ARGON2_AVAILABLE, ARGON2_PREFIX
+        
+        # Check if migration is needed (Current is PBKDF2 or kdf_version is 1)
+        kdf_version = profile.get("kdf_version", 1)
+        stored_hash = profile.get("password_hash")
+        
+        if ARGON2_AVAILABLE and (kdf_version == 1 or not stored_hash.startswith(ARGON2_PREFIX)):
+            try:
+                logger.info(f"[Security Upgrade] Starting full migration to Argon2id for {username}...")
+                
+                # 1. Generate NEW Password Hash (Argon2id)
+                new_hash = CryptoEngine.hash_user_password_argon2(password)
+                
+                # 2. PERFORM RE-WRAP OF VAULT KEY
+                # We already have the decrypted vault_key in our current session!
+                # It was decrypted using the old PBKDF2 KEK during set_active_user flow.
+                current_vault_key = bytes(self.session.vault_key) if self.session.vault_key else None
+                new_wrapped_vault_key = None
+                
+                if current_vault_key:
+                    # Re-wrap using NEW algorithm (Argon2id)
+                    # CryptoEngine.wrap_vault_key now uses Argon2id if available/enabled
+                    new_wrapped_vault_key = CryptoEngine.wrap_vault_key(current_vault_key, password, profile.get("vault_salt"))
+                    logger.debug("[Security Upgrade] Vault key re-wrapped with Argon2id.")
+
+                # 3. Update locally
+                # Update hash and KDF version
+                self.users.update_password_hash(username, new_hash, b'', kdf_version=2)
+                
+                # Update wrapped vault key if re-wrap was successful
+                if new_wrapped_vault_key:
+                    self.users.update_wrapped_vault_key(username, new_wrapped_vault_key)
+                    # Also update vault_access table for consistency
+                    if profile.get("vault_id"):
+                        self.users.save_vault_access(profile["vault_id"], new_wrapped_vault_key, synced=0) # Mark for cloud sync
+
+                # 4. [CLOUD SYNC] Push changes to Supabase
+                try:
+                    from src.infrastructure.user_manager import UserManager
+                    um = UserManager(self)
+                    update_payload = {
+                        "password_hash": new_hash,
+                        "salt": "", 
+                        "kdf_version": 2
+                    }
+                    um.supabase.table("users").update(update_payload).eq("username", username.upper()).execute()
+                    
+                    if new_wrapped_vault_key and profile.get("vault_id") and profile.get("id"):
+                        um.supabase.table("vault_access").update({
+                            "wrapped_master_key": new_wrapped_vault_key.hex()
+                        }).eq("user_id", profile["id"]).eq("vault_id", profile["vault_id"]).execute()
+                        
+                    logger.info(f"[Security Upgrade] Cloud security context for {username} upgraded to Argon2id.")
+                except Exception as ce:
+                    logger.warning(f"Could not sync security migration to cloud: {ce}")
+
+                logger.info(f"[Security Upgrade] Full security migration for {username} completed successfully.")
+            except Exception as e:
+                logger.error(f"Failed to migrate security context to Argon2id: {e}")
 
     def _setup_user_session(self, username: str, profile: Dict[str, Any]) -> None:
         """Initializes the session service with user metadata."""
@@ -215,8 +303,10 @@ class SecretsManager:
 
     def _derive_session_keks(self, password: str, v_salt: bytes) -> bytes:
         """Derives the Key Encryption Key (KEK) for the current session."""
-        self.session.kek_candidates["p100"] = self.security.derive_keke(password, v_salt)
-        return self.session.kek_candidates["p100"]
+        from src.infrastructure.secure_memory import SecureBytes
+        raw_kek = self.security.derive_keke(password, v_salt)
+        self.session.kek_candidates["p100"] = SecureBytes(raw_kek)
+        return raw_kek
 
     def _acquire_vault_key(self, username: str, password: str, v_salt: bytes, profile: Dict[str, Any]) -> None:
         """Attempts to unwrap the vault key with automatic security migration (PBKDF2 -> Argon2id)."""

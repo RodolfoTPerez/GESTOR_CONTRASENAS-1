@@ -1104,6 +1104,33 @@ class DashboardUI:
             f_row.addWidget(b)
             self.mod_filter_group.addButton(b)
         
+        # Search Bar (Global Audit Search)
+        self.search_audit = QLineEdit()
+        self.search_audit.setPlaceholderText(" 🔍  BUSCAR EN EL HISTORIAL...")
+        self.search_audit.setFixedWidth(320)
+        self.search_audit.setFixedHeight(40)  # Preservamos altura para legibilidad
+        self.search_audit.setFocusPolicy(Qt.StrongFocus)
+        
+        # Alineación con el motor de temas dinámico
+        self.search_audit.setStyleSheet(self.theme_manager.apply_tokens("""
+            QLineEdit {
+                background-color: @bg_sec;
+                color: @text;
+                border: 2px solid @primary;
+                border-radius: 8px;
+                padding: 0 12px;
+                font-family: @font-family-main;
+                font-size: 14px;
+                selection-background-color: @primary;
+                selection-color: white;
+            }
+            QLineEdit:focus {
+                border-color: @secondary;
+                background-color: @bg;
+            }
+        """))
+        f_row.addWidget(self.search_audit)
+        
         f_row.addStretch()
         l.addLayout(f_row)
 

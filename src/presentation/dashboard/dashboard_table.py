@@ -700,6 +700,9 @@ class DashboardTableManager:
         colors = self.theme.get_theme_colors()
         try:
             # 1. Detectar Filtro y Modo (Dashboard vs Módulo)
+            if filter_text is None and hasattr(self, 'search_audit'):
+                filter_text = self.search_audit.text().strip()
+                
             filter_mode = "ALL"
             is_global = False
             
@@ -749,9 +752,25 @@ class DashboardTableManager:
 
             # 4. Aplicar filtro de búsqueda manual si se solicita
             if filter_text:
-                filtered = [l for l in all_logs if filter_text.lower() in str(l).lower()]
-                if filtered:
-                    all_logs = filtered
+                filter_text = filter_text.lower()
+                filtered = []
+                for log in all_logs:
+                    # Search specifically in relevant values to avoid matching dict keys
+                    searchable_vals = [
+                        str(log.get("user_name", "")),
+                        str(log.get("action", "")),
+                        str(log.get("service", "")),
+                        str(log.get("details", "")),
+                        str(log.get("status", "")),
+                        str(log.get("device_info", ""))
+                    ]
+                    # Also include formatted timestamp
+                    dt_str = QDateTime.fromSecsSinceEpoch(log.get("timestamp", 0)).toString("yyyy-MM-dd HH:mm:ss")
+                    searchable_vals.append(dt_str)
+                    
+                    if any(filter_text in val.lower() for val in searchable_vals):
+                        filtered.append(log)
+                all_logs = filtered
             
             total_recs = len(all_logs); unique_users = set(); critical_count = 0
             critical_actions = ["DELETE", "PURGE", "ADMIN_REVOKE", "PHYSICAL_DELETE", "ELIMINACION"]

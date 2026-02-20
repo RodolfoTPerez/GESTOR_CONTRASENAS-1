@@ -101,20 +101,11 @@ def start_app():
     _setup_environment()
     app = QApplication(sys.argv)
     
-    # [ULTRA-EARLY DARK FIX]
-    # Configure global attributes FIRST
-    from PyQt5.QtGui import QPalette, QColor
-    palette = app.palette()
-    palette.setColor(QPalette.Window, QColor("#050505"))
-    palette.setColor(QPalette.Base, QColor("#050505"))
-    palette.setColor(QPalette.Text, QColor("#e2e8f0"))
-    app.setPalette(palette)
-    
-    # Force a global dark base state via SS
-    app.setStyleSheet("QWidget { background-color: #050505; color: #e2e8f0; }")
-    
     from src.presentation.theme_manager import ThemeManager
     tm = ThemeManager()
+    
+    # Sincronizamos la paleta nativa una sola vez para evitar flashes blancos
+    tm.sync_app_palette(app)
     
     global_settings = _load_global_config(app, tm)
     sm, um = _initialize_core_managers()
@@ -131,11 +122,18 @@ def start_app():
 
     login_window.on_login_success = on_login_success
     login_window.show()
+    # Ensure login window stays on top during loading
+    login_window.raise_()
     sys.exit(app.exec_())
 
 def _handle_login_success(app, sm, um, master_password, user_profile):
     """Gestiona la transición exitosa del login al dashboard."""
     try:
+        # [ZERO FLASH] Ocultar login instantáneamente antes de la carga pesada
+        if hasattr(app, 'login_window'):
+            app.login_window.hide()
+            app.login_window.deleteLater() # Liberar recursos
+        
         username = user_profile['username']
         
         # [BOOTSTRAP SYNC] Initialize SyncManager early to pull updated security keys

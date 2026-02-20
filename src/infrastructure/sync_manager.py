@@ -2,10 +2,47 @@ import time
 import json
 import base64
 import logging
+import threading
+import os
+import tempfile
+from pathlib import Path
+from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 from src.infrastructure.remote_storage_client import RemoteStorageClient
 
 logger = logging.getLogger(__name__)
+
+class VaultRWLock:
+    """
+    [CONCURRENCY GUARD] Lock de lectura/escritura (Multi-Reader, Single-Writer).
+    Asegura que las operaciones de sync no corrompan el estado o interfieran con la UI.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._readers = 0
+        self._write_lock = threading.Lock()
+
+    @contextmanager
+    def read(self):
+        with self._lock:
+            self._readers += 1
+            if self._readers == 1:
+                self._write_lock.acquire()
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._readers -= 1
+                if self._readers == 0:
+                    self._write_lock.release()
+
+    @contextmanager
+    def write(self):
+        with self._write_lock:
+            yield
+
+# Global lock for sync operations
+_vault_lock = VaultRWLock()
 
 class SyncManager:
     def __init__(self, secrets_manager, supabase_url, supabase_key):
@@ -492,20 +529,47 @@ class SyncManager:
         if not user:
             logger.warning("[Sync] Skip pull: No active user context.")
             return 0
+            
+        # 1. Fetch cloud records
         remote = self.client.get_records(self.table, f"select=*&or=(is_private.eq.0,owner_name.eq.{user})")
+        
+        # 2. Map local records by cloud_id for easy comparison
         local_raw = self.sm.get_all_encrypted()
-        local_cloud_ids = {s.get("cloud_id") for s in local_raw if s.get("cloud_id")}
+        local_map = {s.get("cloud_id"): s for s in local_raw if s.get("cloud_id")}
+        
         count = 0
         for rr in remote:
-            if rr["id"] in local_cloud_ids: continue
+            cloud_id = rr["id"]
+            remote_version = int(rr.get("version") or 0)
+            remote_ts = int(rr.get("updated_at") or 0)
+            
+            # Check for conflict resolution
+            if cloud_id in local_map:
+                local_rec = local_map[cloud_id]
+                local_version = int(local_rec.get("version") or 0)
+                local_ts = int(local_rec.get("updated_at") or 0)
+                
+                # [DETERMINISTIC MERGE] 
+                # Policy: Version is primary, Timestamp is tie-breaker.
+                # If local version > remote, skip.
+                # If local version == remote AND local ts >= remote_ts, skip.
+                if local_version > remote_version:
+                    continue
+                if local_version == remote_version and local_ts >= remote_ts:
+                    continue
+                
+                logger.info(f"[Sync] Resolution: Cloud is newer (V:{remote_version}, TS:{remote_ts}) > Local (V:{local_version}, TS:{local_ts}) for '{rr['service']}'")
+            
             nonce, cipher = self._decode_secret(rr["secret"])
             
-            # Calculate integrity_hash if missing from cloud
+            # Calculate integrity_hash if missing
             integrity_hash = rr.get("integrity_hash")
             if not integrity_hash:
                 import hashlib
                 integrity_hash = hashlib.sha256(cipher).hexdigest()
-                logger.info(f"Generated missing integrity_hash for {rr['service']}: {integrity_hash[:16]}...")
+            
+            # Update or Add (add_secret_encrypted uses INSERT OR REPLACE if sid/cloud_id matches)
+            current_sid = local_map.get(cloud_id, {}).get("id")
             
             self.sm.add_secret_encrypted(
                 service=rr["service"],
@@ -519,11 +583,37 @@ class SyncManager:
                 vault_id=rr.get("vault_id"),
                 deleted=rr.get("deleted", 0),
                 synced=1,
-                cloud_id=rr["id"],
-                version=rr.get("version")
+                cloud_id=cloud_id,
+                version=remote_version,
+                sid=current_sid
             )
             count += 1
         return count
+
+    def write_vault_backup_atomic(self, file_path: str, data: bytes):
+        """
+        [ANTI-CORRUPTION] Writes vault data to disk using the Atomic Rename pattern.
+        """
+        path = Path(file_path)
+        directory = path.parent
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+
+        fd, tmp_file = tempfile.mkstemp(dir=directory, prefix=".vault_tmp_", suffix=".enc")
+        try:
+            with os.fdopen(fd, 'wb') as f:
+                f.write(data)
+                f.flush()
+                # Ensure it's physically written to disk
+                os.fsync(f.fileno())
+            # Atomic swap
+            os.replace(tmp_file, file_path)
+            logger.debug(f"[IO] Atomic write successful: {file_path}")
+        except Exception as e:
+            if os.path.exists(tmp_file):
+                os.unlink(tmp_file)
+            logger.error(f"[IO] Atomic write failed: {e}")
+            raise
 
 
     def _upload_record(self, rec):

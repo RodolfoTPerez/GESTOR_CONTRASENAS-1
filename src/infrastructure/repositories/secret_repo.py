@@ -16,14 +16,16 @@ class SecretRepository:
     def add_secret(self, service: str, username: str, encrypted_secret: bytes, 
                    nonce: bytes, integrity: str, notes: Optional[str], 
                    is_private: int, owner_name: str, owner_id: Optional[str], 
-                   vault_id: Optional[str], version: Optional[str] = None) -> Optional[int]:
+                   vault_id: Optional[str], version: Optional[int] = 1) -> Optional[int]:
         try:
+            # If version is None, default to 1
+            v_val = version if version is not None else 1
             cursor = self.db.execute(
                 """INSERT OR REPLACE INTO secrets 
                 (service, username, secret, nonce, updated_at, deleted, owner_name, owner_id, integrity_hash, notes, is_private, vault_id, version) 
                 VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
                 (service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), 
-                owner_name, owner_id, integrity, notes, int(is_private), vault_id, version)
+                owner_name, owner_id, integrity, notes, int(is_private), vault_id, v_val)
             )
             self.db.commit()
             return cursor.lastrowid
@@ -55,14 +57,26 @@ class SecretRepository:
 
     def update_secret(self, sid: int, service: str, username: str, 
                       encrypted_secret: bytes, nonce: bytes, integrity: str, 
-                      notes: Optional[str], is_private: int, version: Optional[str] = None) -> None:
+                      notes: Optional[str], is_private: int, version: Optional[int] = None) -> None:
         try:
-            self.db.execute(
-                """UPDATE secrets SET 
-                service=?, username=?, secret=?, nonce=?, updated_at=?, integrity_hash=?, notes=?, is_private=?, synced=0, version=? 
-                WHERE id=?""",
-                (service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), integrity, notes, int(is_private), version, sid)
-            )
+            if version is not None:
+                # Use provided version (useful for sync from cloud)
+                v_query = "version=?"
+                v_param = version
+            else:
+                # Increment current version (local edit)
+                v_query = "version = CAST(COALESCE(version, 0) AS INTEGER) + 1"
+                v_param = None
+
+            query = f"""UPDATE secrets SET 
+                service=?, username=?, secret=?, nonce=?, updated_at=?, integrity_hash=?, notes=?, is_private=?, synced=0, {v_query} 
+                WHERE id=?"""
+            
+            params = [service, username, sqlite3.Binary(encrypted_secret), sqlite3.Binary(nonce), int(time.time()), integrity, notes, int(is_private)]
+            if v_param is not None: params.append(v_param)
+            params.append(sid)
+
+            self.db.execute(query, tuple(params))
             self.db.commit()
         except Exception as e:
             logger.error(f"Error updating secret ID {sid}: {e}")

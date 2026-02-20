@@ -376,39 +376,26 @@ class CryptoEngine:
     def wrap_vault_key(vault_master_key: bytes, user_password: str, user_salt: bytes) -> bytes:
         """
         Encripta (wrap) la vault_master_key usando la password del usuario.
-        
-        Este es el corazón del Key Wrapping. La vault_master_key se encripta
-        con una KEK derivada de la password del usuario, permitiendo que cada
-        usuario guarde su propia copia encriptada de la llav compartida.
-        
-        Args:
-            vault_master_key: Llave maestra de la bóveda (32 bytes)
-            user_password: Password del usuario en texto plano
-            user_salt: Salt único del usuario
-            
-        Returns:
-            bytes: vault_master_key encriptada (nonce + ciphertext)
-                  Formato: [12 bytes nonce][44 bytes ciphertext + tag]
-                  Total: 56 bytes
-                  
-        Example:
-            vault_key = generate_vault_master_key()  # 32 bytes
-            wrapped = wrap_vault_key(vault_key, "user_password", user_salt)
-            # wrapped = b'\\x3a\\x1f...\\x9b' (56 bytes: 12 nonce + 44 encrypted)
-            
-        Security Flow:
-            1. user_password + user_salt → KEK (via PBKDF2)
-            2. vault_master_key + KEK → wrapped_key (via AES-GCM)
-            3. wrapped_key se almacena en vault_access table
+        [UPGRADED] Ahora utiliza Argon2id si está habilitado en la configuración.
         """
         if not isinstance(vault_master_key, bytes):
             raise TypeError("vault_master_key must be bytes")
         if len(vault_master_key) != CryptoEngine.KEY_SIZE:
             raise ValueError(f"vault_master_key must be exactly {CryptoEngine.KEY_SIZE} bytes")
             
-        # Derivar KEK desde password del usuario
-        # Revertido a 100,000 iteraciones para mantener compatibilidad
-        kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, 100000)
+        # Determinar algoritmo de derivación de KEK
+        if ARGON2_ENABLED and ARGON2_AVAILABLE:
+            try:
+                kek = CryptoEngine.derive_kek_argon2id(user_password, user_salt, 
+                                                   memory_cost=ARGON2_MEMORY_COST,
+                                                   time_cost=ARGON2_TIME_COST,
+                                                   parallelism=ARGON2_PARALLELISM)
+                logger.debug("[Crypto] Wrapping vault key with Argon2id")
+            except Exception as e:
+                logger.warning(f"[Crypto] Argon2 KEK derivation failed, falling back to PBKDF2: {e}")
+                kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, 100000)
+        else:
+            kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, 100000)
         
         # Generar nonce aleatorio
         nonce = os.urandom(CryptoEngine.NONCE_SIZE)
@@ -421,8 +408,10 @@ class CryptoEngine:
         return nonce + ciphertext
     
     @staticmethod
-    @staticmethod
-    def derive_kek_argon2id(password: str, salt: bytes, memory_cost: int = 65536, time_cost: int = 2, parallelism: int = 1) -> bytes:
+    def derive_kek_argon2id(password: str, salt: bytes, 
+                           memory_cost: int = ARGON2_MEMORY_COST, 
+                           time_cost: int = ARGON2_TIME_COST, 
+                           parallelism: int = ARGON2_PARALLELISM) -> bytes:
         """
         [GOD-LEVEL] Derives a KEK using Argon2id (resistant to GPU/ASIC attacks).
         Default: 64MB RAM consumption per derivation.
@@ -459,21 +448,37 @@ class CryptoEngine:
         
         # 1. Try Argon2id (New Standard)
         if ARGON2_AVAILABLE:
+            kek = None
             try:
-                kek = CryptoEngine.derive_kek_argon2id(user_password, user_salt)
+                kek = bytearray(CryptoEngine.derive_kek_argon2id(user_password, user_salt))
                 aes_gcm = AESGCM(kek)
-                return aes_gcm.decrypt(nonce, ciphertext, None), "argon2id"
+                dec = aes_gcm.decrypt(nonce, ciphertext, None)
+                return dec, "argon2id"
             except Exception:
                 pass
+            finally:
+                if kek:
+                    import ctypes
+                    char_ptr = ctypes.c_char * len(kek)
+                    ctypes.memset(char_ptr.from_buffer(kek), 0, len(kek))
 
         # 2. Try PBKDF2 iterations (Legacy & Forensic Fallback)
         for iter_count in [100000, 600000, 10000, 1000]:
+            kek = None
             try:
-                kek = CryptoEngine.derive_kek_from_password(user_password, user_salt, iterations=iter_count)
+                kek = bytearray(CryptoEngine.derive_kek_from_password(user_password, user_salt, iterations=iter_count))
                 aes_gcm = AESGCM(kek)
-                return aes_gcm.decrypt(nonce, ciphertext, None), "pbkdf2"
+                dec = aes_gcm.decrypt(nonce, ciphertext, None)
+                return dec, "pbkdf2"
             except Exception:
                 continue
+            finally:
+                if kek:
+                    import ctypes
+                    try:
+                        char_ptr = (ctypes.c_char * len(kek)).from_buffer(kek)
+                        ctypes.memset(char_ptr, 0, len(kek))
+                    except Exception: pass
                 
         raise ValueError("Error de autenticación: El password o la llave de bóveda no coinciden.")
 

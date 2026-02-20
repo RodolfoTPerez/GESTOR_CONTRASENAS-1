@@ -102,7 +102,8 @@ class DBManager:
                 ("secrets", "owner_id", "TEXT"),
                 ("security_audit", "user_id", "TEXT"),
                 ("secrets", "cloud_id", "TEXT"),
-                ("secrets", "version", "TEXT")
+                ("secrets", "version", "TEXT"),
+                ("users", "kdf_version", "INTEGER DEFAULT 1")  # 1 = PBKDF2, 2 = Argon2id
             ]
             for t, c, tp in migrations:
                 try:

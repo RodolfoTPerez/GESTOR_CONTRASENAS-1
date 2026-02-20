@@ -18,9 +18,9 @@ USE_ARGON2_FOR_NEW_USERS = True
 
 # Argon2 Parameters (Conservative settings for production)
 # These values balance security and performance
-ARGON2_TIME_COST = 2        # Number of iterations (default: 3)
-ARGON2_MEMORY_COST = 32768  # Memory in KiB = 32 MB (default: 65536 = 64 MB)
-ARGON2_PARALLELISM = 2      # Number of parallel threads (default: 4)
+ARGON2_TIME_COST = 3        # Number of iterations (default: 3)
+ARGON2_MEMORY_COST = 65536  # Memory in KiB = 64 MB (default: 65536 = 64 MB)
+ARGON2_PARALLELISM = 4      # Number of parallel threads (default: 4)
 ARGON2_HASH_LEN = 32        # Output hash length in bytes
 ARGON2_SALT_LEN = 16        # Salt length in bytes
 

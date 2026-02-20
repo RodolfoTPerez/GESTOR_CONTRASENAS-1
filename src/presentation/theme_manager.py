@@ -13,6 +13,7 @@ class ThemeManager(QObject):
     # Global state to sync widgets without passing settings everywhere
     _GLOBAL_THEME = None
     _GLOBAL_OPACITY = 1.0  # Granular transparency multiplier (0.2 - 1.0)
+    _LAST_APPLIED_QSS = "" # Guard to prevent "Theme Storms"
     
     # [ATOMIC DESIGN] Centralized Font Registry
     _FONTS = {
@@ -294,10 +295,16 @@ class ThemeManager(QObject):
             dialog_qss = self.load_stylesheet("dialogs")
             full_qss = f"{base_qss}\n{dash_qss}\n{dialog_qss}"
             
+            # [SENIOR GUARD] Si el estilo es idéntico, no disparamos el repintado global
+            if full_qss == ThemeManager._LAST_APPLIED_QSS:
+                logging.getLogger(__name__).debug("ThemeManager: Style unchanged, skipping application.")
+                return
+
             # [DEEP FIX] Sync palette first
             self.sync_app_palette(app)
             
             app.setStyleSheet(full_qss)
+            ThemeManager._LAST_APPLIED_QSS = full_qss
             
             # Re-polish the application and the active window to ensure global changes propagate
             app.style().unpolish(app)
@@ -424,19 +431,13 @@ class ThemeManager(QObject):
             if not isinstance(color_str, str) or not color_str: 
                 return color_str
             try:
-                # Handle Hex (e.g., #FFFFFF)
-                if color_str.startswith("#"):
-                    c = QColor(color_str)
-                    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {dimmer})"
-                
-                # Handle RGBA (e.g., rgba(255, 255, 255, 1.0))
-                elif color_str.startswith("rgba"):
-                    # Use QColor for robust parsing if possible, or regex
-                    # QColor constructor handles rgba(...) strings usually
-                    c = QColor(color_str)
-                    if c.isValid():
-                         new_alpha = c.alphaF() * dimmer
-                         return f"rgba({c.red()}, {c.green()}, {c.blue()}, {new_alpha})"
+                c = QColor(color_str)
+                if c.isValid():
+                    # Normalización forzada a RGBA para que la comparación de strings en el guard funcione siempre
+                    new_alpha = c.alphaF() if "@" not in color_str else 1.0 # Si es base, preservar. Si es dimmer, aplicar.
+                    # Pero aquí 'dimmer' es la opacidad global. 
+                    # Lo ideal es que TODOS los tokens de color terminen en el mismo formato de texto.
+                    return f"rgba({c.red()}, {c.green()}, {c.blue()}, {c.alphaF() * dimmer})"
             except:
                 pass
             return color_str

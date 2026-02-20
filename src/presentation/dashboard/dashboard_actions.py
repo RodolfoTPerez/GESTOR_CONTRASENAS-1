@@ -113,6 +113,8 @@ class DashboardActions(DashboardVaultActions, DashboardSyncActions, DashboardIOA
             PremiumMessage.error(self, "Acceso Denegado", "Solo el administrador puede cambiar la identidad de la bóveda.")
             return
         
+        # [FIX-V2.2.2-BOOTSTRAP] Force initialization of new_name from UI
+        new_name = self.txt_company_name.text().strip()
         if not new_name:
             new_name = "It Security" # [UNIFIED] Matching Sentence Case
             self.txt_company_name.setText(new_name)

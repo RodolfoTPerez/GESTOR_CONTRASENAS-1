@@ -5,9 +5,9 @@
 }
 
 #MainCard {
-    background-color: @ghost_bg;
+    background-color: @bg_sec;
     border-radius: 20px;
-    border: 1px solid @ghost_border;
+    border: 1px solid @primary;
 }
 
 #HeaderArea {
@@ -55,15 +55,22 @@ QLabel#subtitle_label {
 /* --- CONNECTIVITY INDICATOR --- */
 #conn_monitor {
     background: transparent;
+    border: none;
 }
 
 #conn_led {
-    border-radius: 5px;
-    background-color: @success; /* Default online */
+    background-color: transparent;
 }
 
-#conn_led[state="offline"] { background-color: @warning; }
-#conn_led[state="error"] { background-color: @danger; }
+QLabel#conn_label {
+    background: transparent;
+    font-family: 'Consolas';
+    font-size: 10px;
+    font-weight: bold;
+}
+
+QLabel#conn_label[status="online"] { color: @success; }
+QLabel#conn_label[status="offline"] { color: @warning; }
 
 /* --- BUTTONS --- */
 QPushButton#login_button {

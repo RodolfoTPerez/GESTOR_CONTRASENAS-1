@@ -339,6 +339,7 @@ class UserManagementDialog(QDialog):
                 PremiumMessage.error(self, MESSAGES.COMMON.TITLE_ERROR, code)
 
     def _refresh_data(self):
+        colors = self.theme.get_theme_colors()
         users = self.user_manager.get_all_users()
         count = len(users)
         self.lbl_count.setText(MESSAGES.USERS.LBL_COUNT.format(current=count, max=5))
