@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@300;400;700&display=swap');
+
+:root {
+    /* COLORS */
+    --bg-main: #06070a;
+    --bg-card: rgba(15, 18, 25, 0.7);
+    --primary: #00f2ff;
+    --primary-glow: rgba(0, 242, 255, 0.3);
+    --secondary: #ffae00;
+    --danger: #ff003c;
+    --success: #00ff95;
+    --text-main: #e0e6ed;
+    --text-dim: #707d8a;
+    --border: rgba(0, 242, 255, 0.15);
+
+    /* TYPOGRAPHY */
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-sans: 'Inter', sans-serif;
+    --font-size-base: 14px;
+    --font-size-card-title: 0.8rem;
+    --font-size-card-value: 1.8rem;
+    --font-size-footer: 0.7rem;
+
+    /* LAYOUT & SPACING */
+    --card-padding: 1.5rem;
+    --card-radius: 4px;
+    --glass-blur: blur(12px);
+
+    /* GLOBAL DIMMER (0.0 to 1.0) */
+    --global-brightness: 1.0;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    filter: brightness(var(--global-brightness));
+}
+
+/* CYBER OVERLAY */
+body::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background:
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 4px, 3px 100%;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.15;
+}
+
+/* UTILITIES */
+.glass {
+    background: var(--bg-card);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+.glow-text {
+    text-shadow: 0 0 10px var(--primary-glow);
+}
+
+.mono {
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* ANIMATIONS */
+@keyframes scanline {
+    0% {
+        transform: translateY(0);
+    }
+
+    100% {
+        transform: translateY(100vh);
+    }
+}
+
+.scan-line {
+    position: absolute;
+    width: 100%;
+    height: 100px;
+    background: linear-gradient(to bottom, transparent, rgba(0, 242, 255, 0.05), transparent);
+    animation: scanline 8s linear infinite;
+    pointer-events: none;
+    z-index: 999;
+}

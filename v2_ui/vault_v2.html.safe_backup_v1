@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PASS GUARDIAN | Dashboard</title>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="vault_v2.css">
+    <link rel="stylesheet" href="vault_v2_core.css">
+
+</head>
+
+<body>
+
+    <!-- VISUAL CONNECTORS (DYNAMIC SVG) -->
+    <svg id="svg-connectors"
+        style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:90;">
+        <path id="dynamic-connector" d="" stroke="var(--primary)" stroke-width="1.5" fill="none" opacity="0.4"
+            stroke-dasharray="4,4" />
+    </svg>
+
+    <div class="app-container">
+        <!-- SVG Global Effects -->
+        <svg style="width:0; height:0; position:absolute;">
+            <defs>
+                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:var(--accent-1); stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:var(--accent-4); stop-opacity:1" />
+                </linearGradient>
+            </defs>
+        </svg>
+
+        <aside class="sidebar">
+            <div class="sidebar-logo">PASS GUARDIAN</div>
+
+            <div class="sidebar-nav">
+                <div class="nav-item active" onclick="switchView('dashboard')">
+                    <span class="nav-icon">📊</span>
+                    <span data-i18n="nav_dashboard">DASHBOARD</span>
+                </div>
+                <div class="nav-item" onclick="switchView('vault')">
+                    <span class="nav-icon">🔐</span>
+                    <span data-i18n="nav_vault">VAULT</span>
+                </div>
+                <div class="nav-item" onclick="switchView('ai_side')">
+                    <span class="nav-icon">🧠</span>
+                    <span data-i18n="nav_ai_guardian">AI GUARDIAN</span>
+                </div>
+                <div class="nav-item" onclick="switchView('activity')">
+                    <span class="nav-icon">📜</span>
+                    <span data-i18n="nav_activity">ACTIVITY LOG</span>
+                </div>
+                <div class="nav-item" onclick="switchView('users')">
+                    <span class="nav-icon">👥</span>
+                    <span data-i18n="nav_users">ADMIN PANEL</span>
+                </div>
+                <div class="nav-item" onclick="switchView('settings')">
+                    <span class="nav-icon">⚙️</span>
+                    <span data-i18n="nav_settings">SETTINGS</span>
+                </div>
+            </div>
+
+            <div class="brightness-control">
+                <label data-i18n="brightness_lbl">BRIGHTNESS_LEVEL</label>
+                <input type="range" id="brightness" min="0.6" max="1.6" step="0.01" value="1">
+            </div>
+        </aside>
+
+        <main class="main-viewport">
+
+            <div id="view-dashboard" class="view-pane">
+                <!-- TOP HUD BAR -->
+                <div class="hud-header-v2">
+                    <span class="badge-security" data-i18n="aes_encrypted">AES-256 ENCRYPTED</span>
+                    <div class="title-main" id="globalCompanyTitle" data-i18n="it_security">IT SECURITY</div>
+                    <div class="widgets">
+                        <span id="clock"
+                            style="font-family: var(--font-title); color: var(--tactical-blue); font-size: 14px;">00:00:00</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-layout-v2">
+                    <!-- ROW 1: TOP BENTO STATS -->
+                    <div class="stats-bento-row">
+                        <div class="stat-card-v2">
+                            <small data-i18n="admin_secrets">ADMIN SECRETS</small>
+                            <div class="value" id="valAdmin" style="font-family: var(--font-title);">0</div>
+                        </div>
+                        <div class="stat-card-v2">
+                            <small data-i18n="user_secrets">USERS SECRETS</small>
+                            <div class="value" id="valUser" style="font-family: var(--font-title);">20</div>
+                        </div>
+                        <div class="stat-card-v2">
+                            <small data-i18n="total_users_lbl">TOTAL USERS</small>
+                            <div class="value" id="valUsers" style="font-family: var(--font-title);">3</div>
+                        </div>
+                        <div class="stat-card-v2">
+                            <small data-i18n="sessions_lbl">SESSIONS</small>
+                            <div class="value" id="valSessions" style="font-family: var(--font-title);">1</div>
+                        </div>
+                        <div class="stat-card-v2">
+                            <small data-i18n="logs_lbl">LOGS</small>
+                            <div class="value" id="valLogs" style="font-family: var(--font-title);">463</div>
+                        </div>
+                    </div>
+
+                    <!-- ROW 2: HUD MIDDLE LAYER -->
+                    <div class="middle-hud-row">
+
+                        <!-- GLOBAL SECURITY STATE -->
+                        <div class="hud-pane">
+                            <div class="hud-pane-header">
+                                <span data-i18n="global_security_title">ESTADO GLOBAL DE SEGURIDAD</span>
+                                <span data-i18n="core_active">[NÚCLEO_ACTIVO]</span>
+                            </div>
+
+                            <!-- Centering Wrapper -->
+                            <div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+                                <div
+                                    style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; align-items: center; width: 100%; max-width: 550px;">
+                                    <!-- Gauge Side -->
+                                    <div style="display: flex; justify-content: center; position: relative;">
+                                        <svg width="140" height="140" viewBox="0 0 100 100">
+                                            <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)"
+                                                stroke-width="6" />
+                                            <circle id="securityGauge" cx="50" cy="50" r="45" fill="none"
+                                                stroke="var(--tactical-teal)" stroke-width="8" stroke-dasharray="283"
+                                                stroke-dashoffset="283"
+                                                style="filter: drop-shadow(0 0 10px var(--tactical-teal)); transform: rotate(-90deg); transform-origin: center; transition: stroke-dashoffset 1s ease;" />
+                                        </svg>
+                                        <div id="securityScoreVal" class="value-large-display"
+                                            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: var(--font-title);">
+                                            --</div>
+                                    </div>
+
+                                    <!-- Metrics Side -->
+                                    <div class="security-metrics-side">
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="core_health">ESTADO DEL NÚCLEO / CORE HEALTH</span>
+                                            <span id="coreHealthVal" class="mono-value">--%</span>
+                                        </div>
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="access_integrity">INTEGRIDAD / ACCESS INTEGRITY</span>
+                                            <span id="accessIntegrityVal" class="mono-value">--%</span>
+                                        </div>
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="encryption_level">CIFRADO / ENCRYPTION</span>
+                                            <span class="mono-value">AES-256 GCM 🛡️</span>
+                                        </div>
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="memory_load">MEMORIA / MEMORY LOAD</span>
+                                            <span id="memMbVal" class="mono-value">-- MB 📑</span>
+                                        </div>
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="risk_exposure">RIESGO / RISK EXPOSURE</span>
+                                            <span id="riskExpVal" class="mono-value">-- 🛡️</span>
+                                        </div>
+                                        <div class="row-tactical-text">
+                                            <span data-i18n="audit_protocol">AUDITORÍA / AUDIT PROTOCOL</span>
+                                            <span id="auditProtVal" class="mono-value">OK ✅</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div data-i18n="protection_reinforced"
+                                style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.65rem; color: var(--tactical-teal); letter-spacing: 2px;">
+                                PROTECCIÓN: REFORZADA
+                            </div>
+                        </div>
+
+                        <!-- RIGHT PANE: AI GUARDIAN -->
+                        <div class="hud-pane">
+                            <div class="hud-pane-header">
+                                <span data-i18n="ai_guardian_title">AI_GUARDIAN / GUARDIÁN_IA</span>
+                                <span id="aiRiskCount" style="color: var(--tactical-danger); font-size: 11px;">🛡️ 0
+                                    <span data-i18n="risks">RISKS</span></span>
+                            </div>
+                            <div
+                                style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; height: calc(100% - 40px);">
+                                <div class="spider-chart-container">
+                                    <!-- Orbital Labels Layer -->
+                                    <div class="orbital-labels">
+                                        <div class="o-label top"><span data-i18n="o_strength">STRENGTH</span> <span
+                                                id="valFort" style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label tl"><span data-i18n="o_risk">RISK</span> <span id="valRisk"
+                                                style="color:#ff003c">--%</span></div>
+                                        <div class="o-label tr"><span data-i18n="o_identity">IDENTITY</span> <span
+                                                id="valIdent" style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label ml"><span data-i18n="o_logs">LOGS</span> <span id="valReg"
+                                                style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label mr"><span data-i18n="o_health">HEALTH</span> <span
+                                                id="valHealth" style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label bl"><span data-i18n="o_cloud">CLOUD</span> <span
+                                                id="valCloud" style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label br"><span data-i18n="o_rotation">ROTATION</span> <span
+                                                id="valRot" style="color:var(--tactical-blue)">--%</span></div>
+                                        <div class="o-label bottom"><span data-i18n="o_intel">INTELLIGENCE</span> <span
+                                                id="valIntel" style="color:var(--tactical-blue)">--%</span></div>
+                                    </div>
+
+                                    <div class="radar-container">
+                                        <div class="radar-ripple"></div>
+                                        <div class="radar-ripple"></div>
+                                        <div class="radar-sweep"></div>
+                                        <div class="radar-circle"></div>
+                                        <div class="radar-circle" style="width: 66%; height: 66%;"></div>
+                                        <div class="radar-circle" style="width: 33%; height: 33%;"></div>
+                                        <div class="radar-crosshair-h"></div>
+                                        <div class="radar-crosshair-v"></div>
+                                        <div class="radar-center-dot"></div>
+                                        <div class="radar-crosshair-d1"></div>
+                                        <div class="radar-crosshair-d2"></div>
+
+                                        <!-- Spider Chart Overlay -->
+                                        <svg id="radarSpiderChart" viewBox="0 0 100 100"
+                                            style="position:absolute; width:100%; height:100%; top:0; left:0; z-index:3; pointer-events:none; filter: drop-shadow(0 0 5px var(--tactical-blue));">
+                                            <polygon points="" fill="rgba(0, 242, 255, 0.2)"
+                                                stroke="var(--tactical-blue)" stroke-width="1.5"
+                                                style="transition: all 0.5s ease-out; stroke-linejoin: round;" />
+                                        </svg>
+
+                                        <div id="radarBlips"></div>
+                                    </div>
+
+                                    <div class="radar-status-text" data-i18n="tactical_radar_live">TACTICAL RADAR: LIVE
+                                    </div>
+                                </div>
+                                <div class="intel-feed" id="aiIntelFeed">
+                                    <div data-i18n="real_time"
+                                        style="font-size: 10px; color: var(--tactical-danger); margin-bottom: 8px; font-weight: 700;">
+                                        [REAL_TIME]</div>
+                                    <div class="intel-alert">
+                                        <div class="alert-title" data-i18n="ai_alert_title">Critical vulnerability
+                                            detected in 1 vault</div>
+                                        <div class="alert-actions">
+                                            <button class="intel-btn" onclick="vaultBridge.trigger_ai_audit()"
+                                                data-i18n="btn_apply">APPLY</button>
+                                            <button class="intel-btn" onclick="openAuditModal()"
+                                                data-i18n="btn_review">REVIEW</button>
+                                            <button class="intel-btn" data-i18n="btn_ignore">IGNORE</button>
+                                        </div>
+                                    </div>
+                                    <div style="font-size: 9px; line-height: 1.5;">
+                                        <div style="color: var(--tactical-warning)" data-i18n="ai_warn_1">> WARNING:
+                                            Degraded security posture</div>
+                                        <div style="color: var(--tactical-warning)" data-i18n="ai_warn_2">> 15 keys with
+                                            weak entropy identified</div>
+                                        <div style="color: var(--tactical-warning)" data-i18n="ai_warn_3">> 1 key found
+                                            in multiple clusters</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROW 3: QUAD METRICS -->
+                    <div class="bottom-metrics-row" style="grid-template-columns: repeat(3, 1fr);">
+                        <!-- ACCESS SECURITY (Existing) -->
+                        <div class="metric-card-small" id="accessSecurityCard">
+                            <h4 data-i18n="access_security_title">SEGURIDAD DE ACCESO</h4>
+                            <!-- ... content ... -->
+                            <div class="prog-v2-header" style="margin-top: 5px;"><span
+                                    data-i18n="mfa_coverage">COBERTURA MFA</span><span id="mfaCoverageVal">0 / 0
+                                    🛡️</span></div>
+                            <div class="prog-v2-track">
+                                <div class="prog-v2-fill teal" style="width: 0%"></div>
+                            </div>
+
+                            <div class="prog-v2-header" style="margin-top: 10px;"><span data-i18n="admin_sec">SEGURIDAD
+                                    DE ADMIN</span><span
+                                    style="color: var(--tactical-teal); font-family: var(--font-mono); font-weight: 700;">SECURE
+                                    🛡️</span></div>
+                            <div class="prog-v2-header" style="margin-top: 10px;"><span
+                                    data-i18n="active_sessions">SESIONES ACTIVAS</span><span id="activeSessionsVal"
+                                    style="color: var(--tactical-warning); font-family: var(--font-mono); font-weight: 700;">1
+                                    ACTIVE ⚡</span></div>
+                            <div class="prog-v2-header" style="margin-top: 10px;"><span data-i18n="sec_policy">POLÍTICA
+                                    DE
+                                    SEGURIDAD</span><span
+                                    style="font-family: var(--font-mono); font-weight: 700;">BUSINESS STD 🏢</span>
+                            </div>
+
+                            <div class="prog-v2-container" style="margin-top: 10px;">
+                                <div class="prog-v2-header"><span data-i18n="login_attempts">INTENTOS LOGIN</span><span
+                                        id="loginAttemptsVal" class="mono-value">0 ATTEMPTS ⚡</span></div>
+                                <div class="prog-v2-track">
+                                    <div class="prog-v2-fill blue" style="width: 5%"></div>
+                                </div>
+                            </div>
+
+                            <div class="prog-v2-header" style="margin-top: 10px;"><span data-i18n="last_incident">ÚLTIMO
+                                    INCIDENTE</span><span id="lastIncidentVal"
+                                    style="font-family: var(--font-mono); font-weight: 700;">--
+                                    ✅</span></div>
+                        </div>
+
+                        <!-- PASSWORD HEALTH (v3) -->
+                        <div class="metric-card-small" id="v3HealthCard"
+                            style="min-height: 240px; position: relative; overflow: hidden;">
+                            <h4>
+                                <span data-i18n="pass_health_title">PASSWORD HEALTH</span>
+                                <button class="v3-pill-btn" onclick="openHealthDashboard()"><span
+                                        data-i18n="fix_issues_btn">REPARAR</span> &rarr;</button>
+                            </h4>
+
+                            <div class="v3-main-row">
+                                <!-- Left Column: Weak/Strong -->
+                                <div class="v3-metric-col">
+                                    <div class="v3-metric-box">
+                                        <div class="v3-indicator-line red"></div>
+                                        <div class="v3-meta">
+                                            <div id="valWeak" class="v3-num red">0</div>
+                                            <div class="v3-sub" data-i18n="weak_lbl">DÉBILES</div>
+                                        </div>
+                                    </div>
+                                    <div class="v3-metric-box">
+                                        <div class="v3-indicator-line teal"></div>
+                                        <div class="v3-meta">
+                                            <div id="valStrong" class="v3-num teal">0</div>
+                                            <div class="v3-sub" data-i18n="strong_lbl">FUERTES</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Center Column: Gauge (HUD Standard r=45) -->
+                                <div class="v3-gauge-col">
+                                    <div class="v3-gauge-wrap">
+                                        <svg viewBox="0 0 100 100">
+                                            <!-- Segmented Background -->
+                                            <circle class="v3-gauge-bg" cx="50" cy="50" r="45" />
+                                            <!-- Dynamic Fill Arc -->
+                                            <circle id="v3HealthGauge" class="v3-gauge-fill" cx="50" cy="50" r="45"
+                                                style="stroke-dasharray: 283; stroke-dashoffset: 283;" />
+                                        </svg>
+                                        <div class="v3-score-wrap">
+                                            <div id="vaultScoreVal" class="v3-score-num">0</div>
+                                            <div class="v3-score-label" data-i18n="health_lbl">SALUD</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Right Column: Repeated/Expired -->
+                                <div class="v3-metric-col align-right">
+                                    <div class="v3-metric-box">
+                                        <div class="v3-meta text-right">
+                                            <div id="valRep" class="v3-num">0</div>
+                                            <div class="v3-sub" data-i18n="repeated_lbl">REPETIDAS</div>
+                                        </div>
+                                        <div class="v3-indicator-line gray"></div>
+                                    </div>
+                                    <div class="v3-metric-box">
+                                        <div class="v3-meta text-right">
+                                            <div id="valExp" class="v3-num">0</div>
+                                            <div class="v3-sub" data-i18n="expired_lbl">EXPIRADAS</div>
+                                        </div>
+                                        <div class="v3-indicator-line gray"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="v3-footer">
+                                <div class="v3-status-dots">
+                                    <span class="v3-dot active"></span>
+                                    <span class="v3-dot active"></span>
+                                    <span class="v3-dot active"></span>
+                                    <span class="v3-dot"></span>
+                                    <span id="healthStatusText" class="v3-status-label teal">GOOD</span>
+                                </div>
+                                <div class="v3-timestamp"><span data-i18n="last_scan">Último escaneo:</span> <span
+                                        id="lastScanTime" data-i18n="just_now">AHORA MISMO</span></div>
+                            </div>
+                        </div>
+
+                        <!-- VIGILANCIA DE SEGURIDAD (New 3rd Column) -->
+                        <div class="metric-card-small" id="secWatchCard"
+                            style="min-height: 240px; position: relative; overflow: hidden;">
+                            <h4>
+                                <span data-i18n="sec_watch_title">VIGILANCIA DE SEGURIDAD</span>
+                                <span id="watch_AlertsCount" style="color: var(--tactical-danger); font-size: 10px;">0
+                                    RISKS</span>
+                            </h4>
+
+                            <div class="v3-main-row" style="padding-top: 10px;">
+                                <!-- Left: Progress Bars -->
+                                <div class="v3-metric-col" style="flex: 1.2;">
+                                    <div class="prog-v2-container">
+                                        <div class="prog-v2-header"><span>STRENGTH</span><span
+                                                id="watch_StrengthVal">--%</span></div>
+                                        <div class="prog-v2-track">
+                                            <div id="watch_StrengthBar" class="prog-v2-fill cyan" style="width: 0%">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="prog-v2-container">
+                                        <div class="prog-v2-header"><span>AUTH</span><span id="watch_AuthVal">--%</span>
+                                        </div>
+                                        <div class="prog-v2-track">
+                                            <div id="watch_AuthBar" class="prog-v2-fill teal" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="prog-v2-container">
+                                        <div class="prog-v2-header"><span>SYNC</span><span id="watch_SyncVal">--%</span>
+                                        </div>
+                                        <div class="prog-v2-track">
+                                            <div id="watch_SyncBar" class="prog-v2-fill teal" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="prog-v2-container">
+                                        <div class="prog-v2-header"><span>HEALTH</span><span
+                                                id="watch_HealthVal">--%</span></div>
+                                        <div class="prog-v2-track">
+                                            <div id="watch_HealthBar" class="prog-v2-fill red" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="prog-v2-container">
+                                        <div class="prog-v2-header"><span>ROTATION</span><span
+                                                id="watch_RotVal">--%</span></div>
+                                        <div class="prog-v2-track">
+                                            <div id="watch_RotBar" class="prog-v2-fill cyan" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Center: Tactical Alerts -->
+                                <div class="v3-metric-col" style="flex: 1.5; padding: 0 20px;">
+                                    <div id="secWatchIntel" class="intel-mini-feed">
+                                        <div class="intel-line danger"><span data-i18n="det_vuln">DETECCIÓN:
+                                                VULNERABILIDADES</span> <span id="watch_ThreatsCount">0</span></div>
+                                        <div class="intel-line dim" data-i18n="heur_analysis">Análisis heurístico en
+                                            curso...</div>
+                                        <div class="intel-line highlight" style="margin-top: 20px;">SQLite Load: <span
+                                                id="watch_SqliteLoad">0.00 MB</span></div>
+                                        <div class="intel-line"><span data-i18n="sys_state">Estado del Sistema:</span>
+                                            <span id="watch_SysState">ACTIVE</span>
+                                        </div>
+                                        <div class="intel-line"><span data-i18n="sec_nodes">Nodos de Seguridad:</span>
+                                            <span id="watch_SecNodes">ACTIVE</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Right: Metrics -->
+                                <div class="v3-metric-col" style="flex: 1;">
+                                    <div class="v3-metric-box">
+                                        <div class="v3-meta text-right">
+                                            <div id="watch_HighRisk" class="v3-num red">0</div>
+                                            <div class="v3-sub" data-i18n="high_risk">ALTO RIESGO</div>
+                                        </div>
+                                        <div class="v3-indicator-line red"></div>
+                                    </div>
+                                    <div class="v3-metric-box">
+                                        <div class="v3-meta text-right">
+                                            <div id="watch_Unused" class="v3-num">0</div>
+                                            <div class="v3-sub" data-i18n="30d_unused">30D SIN USO</div>
+                                        </div>
+                                        <div class="v3-indicator-line gray"></div>
+                                    </div>
+                                    <div class="v3-metric-box">
+                                        <div class="v3-meta text-right">
+                                            <div id="watch_NeverRot" class="v3-num">0</div>
+                                            <div class="v3-sub" data-i18n="never_rot">SIN ROTACIÓN</div>
+                                        </div>
+                                        <div class="v3-indicator-line gray"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TACTICAL BOTTOM NAVIGATION -->
+                <div class="tactical-footer-nav">
+                    <div class="nav-btn-v2" onclick="switchView('users')">
+                        <span class="icon">👥</span>
+                        <span class="label" data-i18n="users_nav"></span>
+                    </div>
+                    <div class="nav-btn-v2" onclick="openAuditModal()">
+                        <span class="icon">📜</span>
+                        <span class="label" data-i18n="audit_nav"></span>
+                    </div>
+                    <div class="nav-btn-v2" onclick="openSessionsModal()">
+                        <span class="icon">📊</span>
+                        <span class="label" data-i18n="monitor_nav"></span>
+                    </div>
+                    <div class="nav-btn-v2" onclick="triggerAction('ai_audit')">
+                        <span class="icon">🛡️</span>
+                        <span class="label" data-i18n="integrity_nav"></span>
+                    </div>
+                    <div class="nav-btn-v2" onclick="triggerAction('sync')">
+                        <span class="icon">🔄</span>
+                        <span class="label" data-i18n="sync_nav"></span>
+                    </div>
+                    <div class="nav-btn-v2" onclick="openServiceModal(0)">
+                        <span class="icon">💎</span>
+                        <span class="label" data-i18n="services_nav"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NEW VIEW PANES (BILINGUAL PLACEHOLDERS) -->
+            <div id="view-ai_side" class="view-pane" style="display:none;">
+                <div class="hud-header-v2">
+                    <span class="badge-security" data-i18n="ai_guardian_title">AI GUARDIAN</span>
+                    <div class="title-main">AI_GUARDIAN_HUD</div>
+                </div>
+                <div class="vault-container" style="flex-direction: row; gap: 20px;">
+                    <div class="hud-pane"
+                        style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                        <div class="radar-container" style="width: 250px; height: 250px; margin-bottom: 20px;">
+                            <div class="radar-sweep"></div>
+                            <div class="radar-circle"></div>
+                            <div class="radar-crosshair-h"></div>
+                            <div class="radar-crosshair-v"></div>
+                            <div id="radarBlips"></div>
+                        </div>
+                        <div class="t-badge"
+                            style="border-color: var(--primary); color: var(--primary); letter-spacing: 2px;"
+                            data-i18n="intel_active">NEURAL_INTELLIGENCE_ACTIVE</div>
+                    </div>
+                    <div class="hud-pane" style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="hud-pane-header">
+                            <span data-i18n="ai_analysis_feed">AI_ANALYSIS_FEED</span>
+                            <span class="t-badge" data-i18n="real_time">[TIEMPO_REAL]</span>
+                        </div>
+                        <div id="ai-guardian-feed" class="log-stream-v2" style="flex: 1; overflow-y: auto;">
+                            <!-- INJECTED BY JS -->
+                            <div class="log-entry">> INICIALIZANDO_NÚCLEO_HEURÍSTICO...</div>
+                            <div class="log-entry">> ESCANEANDO_VECTORES_DE_ATAQUE...</div>
+                            <div class="log-entry">> ESTADO_DEL_SISTEMA: NOMINAL</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-activity" class="view-pane" style="display:none;">
+                <div class="hud-header-v2">
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div>
+                            <span class="badge-security" data-i18n="nav_activity">ACTIVITY LOG</span>
+                            <div class="title-main">SYSTEM_AUDIT_STREAM</div>
+                        </div>
+                        <button class="nav-btn-v2" onclick="refreshLogs()" style="margin-right:0;">
+                            <i class="fas fa-sync-alt" style="margin-right: 8px;"></i>
+                            SYNC HISTORY
+                        </button>
+                    </div>
+                </div>
+                <div class="vault-container">
+                    <div class="vault-action-bar" style="margin-bottom: 20px; gap: 15px; flex-wrap: nowrap;">
+                        <div class="activity-filter-group">
+                            <button class="nav-btn-v2 active" onclick="setLogFilter('ALL', this)">ALL</button>
+                            <button class="nav-btn-v2" onclick="setLogFilter('AUTH', this)">AUTH</button>
+                            <button class="nav-btn-v2" onclick="setLogFilter('SECRETS', this)">SECRETS</button>
+                            <button class="nav-btn-v2" onclick="setLogFilter('ADMIN', this)">ADMIN</button>
+                            <button class="nav-btn-v2" onclick="setLogFilter('GLOBAL', this)">
+                                🌐 GLOBAL CLOUD
+                            </button>
+                        </div>
+                        <div class="activity-search-input">
+                            <span style="margin-right:8px; font-size:14px; opacity:0.8;">🔍</span>
+                            <input type="text" data-i18n="[placeholder]search_logs"
+                                placeholder="BUSCAR EN EL HISTORIAL..." id="logSearch" oninput="filterLogs()">
+                        </div>
+                    </div>
+                    <div id="activity-log-table" class="tactical-table-wrapper">
+                        <table class="activity-table">
+                            <thead>
+                                <tr>
+                                    <th>TIMESTAMP</th>
+                                    <th>USER</th>
+                                    <th>ACTION</th>
+                                    <th>TARGET</th>
+                                    <th>DEVICE</th>
+                                    <th>DETAILS</th>
+                                    <th>STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-tbody">
+                                <!-- INJECTED BY JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-users" class="view-pane" style="display:none;">
+                <div class="hud-header-v2">
+                    <span class="badge-security" data-i18n="nav_users">ADMIN PANEL</span>
+                    <div class="title-main">USER_ACCESS_CONTROL</div>
+                </div>
+                <div class="vault-container">
+                    <div class="admin-grid-v2">
+                        <!-- LEFT COLUMN: TABLES -->
+                        <div class="admin-left-col">
+                            <div class="hud-pane-header">
+                                <span data-i18n="user_registry">USER_REGISTRY</span>
+                                <span id="user-count-badge" class="t-badge">[0/5]</span>
+                            </div>
+                            <div id="users-table" class="tactical-table-wrapper" style="height: 300px;">
+                                <table class="vault-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th data-i18n="owner_hdr">USERNAME</th>
+                                            <th data-i18n="filter_admin">ROLE</th>
+                                            <th data-i18n="shield_hdr">STATUS</th>
+                                            <th data-i18n="action_hdr">ACTIONS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="users-tbody"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="hud-pane-header" style="margin-top: 25px;">
+                                <span data-i18n="invitations_protocol">INVITATIONS_PROTOCOL</span>
+                                <button class="v-btn-tactical small" data-i18n="gen_code_btn" onclick="createInvite()">+
+                                    GEN_CODE</button>
+                            </div>
+                            <div id="invites-table" class="tactical-table-wrapper" style="height: 180px;">
+                                <table class="vault-table">
+                                    <thead>
+                                        <tr>
+                                            <th data-i18n="code_hdr">CODE</th>
+                                            <th data-i18n="filter_admin">ROLE</th>
+                                            <th data-i18n="created_by_hdr">CREATED_BY</th>
+                                            <th data-i18n="shield_hdr">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="invites-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN: ADD USER -->
+                        <div class="admin-right-col">
+                            <div class="glass-card login-card" style="padding: 20px; border-color: var(--primary);">
+                                <div class="card-header-tactical" style="margin-bottom: 20px;">
+                                    <span data-i18n="add_node_operator">[+] ADD_NODE_OPERATOR</span>
+                                </div>
+                                <div class="card-body-tactical">
+                                    <div class="form-group-tactical">
+                                        <label data-i18n="operator_name">OPERATOR_NAME</label>
+                                        <input type="text" id="new-user-name" class="t-select-mini"
+                                            placeholder="ID_ALPHA...">
+                                    </div>
+                                    <div class="form-group-tactical">
+                                        <label data-i18n="access_role">ACCESS_ROLE</label>
+                                        <select id="new-user-role" class="t-select-mini">
+                                            <option value="user">USER</option>
+                                            <option value="admin">ADMIN</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group-tactical">
+                                        <label data-i18n="master_password">MASTER_PASSWORD</label>
+                                        <input type="password" id="new-user-pass" class="t-select-mini"
+                                            oninput="updateAddUserStrength()">
+                                        <div class="strength-track" style="margin-top: 5px;">
+                                            <div id="new-user-strength" class="strength-fill"></div>
+                                        </div>
+                                    </div>
+                                    <button class="v-btn-tactical" style="width: 100%; margin-top: 10px;"
+                                        id="add-user-btn" data-i18n="provision_node_btn"
+                                        onclick="addUser()">PROVISION_NODE</button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-settings" class="view-pane" style="display:none;">
+                <div class="hud-header-v2">
+                    <span class="badge-security" data-i18n="nav_settings">SETTINGS</span>
+                    <div class="title-main">PROTOCOL_CONFIG</div>
+                </div>
+                <div class="vault-container">
+                    <div class="settings-grid">
+                        <!-- CARD 1: OPERATOR PROFILE -->
+                        <div class="glass-card settings-card" ondblclick="HUD.showExplanation('operator_profile')">
+                            <div class="card-header-tactical">
+                                <span>[01] OPERATOR_PROFILE</span>
+                                <span class="t-icon">👤</span>
+                            </div>
+                            <div class="card-body-tactical">
+                                <div class="setting-item">
+                                    <label data-i18n="operator_lbl">OPERATOR_ID</label>
+                                    <span id="set-op-name" class="t-value">---</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label data-i18n="filter_admin">ROLE</label>
+                                    <span id="set-op-role" class="t-value">---</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label>UID</label>
+                                    <span id="set-op-id" class="t-mono">V-882-SYS</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CARD 2: SECURITY ENGINE -->
+                        <div class="glass-card settings-card" ondblclick="HUD.showExplanation('security_engine')">
+                            <div class="card-header-tactical">
+                                <span>[02] SECURITY_ENGINE</span>
+                                <span class="t-icon">🛡️</span>
+                            </div>
+                            <div class="card-body-tactical">
+                                <div class="setting-item">
+                                    <label data-i18n="encryption_standard">ENCRYPTION_STANDARD</label>
+                                    <span id="set-enc-std" class="t-value-secure">AES-256-GCM</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label data-i18n="key_rotation">LAST_KEY_ROTATION</label>
+                                    <span id="set-key-rot" class="t-value">01-01-2026</span>
+                                </div>
+                                <div class="setting-item">
+                                    <label data-i18n="last_synced">CLOUD_SYNC</label>
+                                    <span id="set-sync-stat" class="t-badge-success">NOMINAL</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CARD 3: HUD BEHAVIOR -->
+                        <div class="glass-card settings-card">
+                            <div class="card-header-tactical">
+                                <span>[03] HUD_BEHAVIOR</span>
+                                <span class="t-icon">⚙️</span>
+                            </div>
+                            <div class="card-body-tactical">
+                                <div class="form-group-tactical">
+                                    <label data-i18n="ui_theme_protocol">UI_THEME_PROTOCOL</label>
+                                    <select id="theme-selector" class="t-select-mini">
+                                        <option value="tactical_dark">TACTICAL_DARK</option>
+                                        <option value="vultrax_v2">VULTRAX_OS_V2</option>
+                                        <option value="aura_forest">AURA_FOREST</option>
+                                        <option value="nebula_velvet">NEBULA_VELVET</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-tactical">
+                                    <label data-i18n="auto_lock_protocol">AUTO_LOCK_PROTOCOL</label>
+                                    <select id="set-autolock-time" class="t-select-mini">
+                                        <option value="1">1 MINUTE</option>
+                                        <option value="5">5 MINUTES</option>
+                                        <option value="10">10 MINUTES</option>
+                                        <option value="30">30 MINUTES</option>
+                                        <option value="60">60 MINUTES</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CARD 4: AI ENGINE CONFIG -->
+                        <div class="glass-card settings-card" style="grid-column: span 2;">
+                            <div class="card-header-tactical">
+                                <span data-i18n="ai_engine_protocol">[04] AI_ENGINE_PROTOCOL</span>
+                                <span id="ai-status-indicator" class="t-badge">STDBY</span>
+                            </div>
+                            <div class="card-body-tactical"
+                                style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <div class="ai-config-left">
+                                    <div class="form-group-tactical">
+                                        <label data-i18n="active_engine">ACTIVE_ENGINE</label>
+                                        <select id="ai-provider-select" class="t-select-mini">
+                                            <option value="Disabled">DISABLED</option>
+                                            <option value="Google Gemini ✨">GEMINI_ULTRA</option>
+                                            <option value="OpenAI ChatGPT 🤖">CHATGPT_4O</option>
+                                            <option value="Anthropic Claude 🛡️">CLAUDE_3_5</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group-tactical">
+                                        <label data-i18n="vault_name_alias">VAULT_NAME_ALIAS</label>
+                                        <input type="text" id="set-vault-name" class="t-select-mini">
+                                    </div>
+                                </div>
+                                <div class="ai-config-right">
+                                    <div class="form-group-tactical">
+                                        <label>GEMINI_API_KEY</label>
+                                        <input type="password" id="key-gemini" class="t-select-mini"
+                                            placeholder="AIza...">
+                                    </div>
+                                    <div class="form-group-tactical">
+                                        <label>OPENAI_API_KEY</label>
+                                        <input type="password" id="key-chatgpt" class="t-select-mini"
+                                            placeholder="sk-...">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CARD 5: SYSTEM RECOVERY -->
+                        <div class="glass-card settings-card">
+                            <div class="card-header-tactical">
+                                <span data-i18n="system_recovery">[05] SYSTEM_RECOVERY</span>
+                                <span class="t-icon">🛠️</span>
+                            </div>
+                            <div class="card-body-tactical">
+                                <p class="t-mono"
+                                    style="font-size: 0.6rem; color: var(--text-dim); margin-bottom: 15px;">
+                                    PROTOCOL_REPAIR: Use only if database integrity is compromised or
+                                    encryption keys
+                                    desynchronized.
+                                </p>
+                                <button class="v-btn-tactical"
+                                    style="width: 100%; border-color: var(--danger); color: var(--danger);"
+                                    data-i18n="launch_repair" onclick="runRepair()">LAUNCH_REPAIR</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- SAVE BAR -->
+                    <div class="save-bar-tactical" style="margin-top: 30px; display: flex; justify-content: flex-end;">
+                        <button class="v-btn-tactical" style="width: 250px;" data-i18n="commit_changes"
+                            onclick="saveAllSettings()">COMMIT_CHANGES</button>
+                    </div>
+                </div>
+            </div>
+
+
+            <div id="view-vault" class="view-pane" style="display:none;">
+                <div class="vault-container">
+                    <header class="vault-header">
+                        <div>
+                            <h1 id="companyNameDash">...</h1>
+                        </div>
+                    </header>
+
+                    <div class="vault-action-bar">
+                        <div class="v-search-trending">
+                            <input type="text" placeholder="BUSCAR REGISTROS..." id="vaultSearch"
+                                oninput="filterVault()">
+                        </div>
+
+                        <div class="v-counters">
+                            <span data-i18n="active_lbl">ACTIVOS:</span><b id="count-total">-</b>
+                            <span class="v-separator"></span>
+                            <span data-i18n="filtered_lbl">FILTRADOS:</span><b id="count-filtered">-</b>
+                        </div>
+
+                        <div class="v-tactical-icons">
+
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.import_vault()"
+                                title="Importar">📤</button>
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.export_vault()"
+                                title="Exportar">📥</button>
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.download_template()"
+                                title="Plantilla">📄</button>
+                            <button class="v-tac-icon success" onclick="openServiceModal()"
+                                title="Nuevo Nodo">➕</button>
+                        </div>
+                    </div>
+
+                    <section class="vault-main">
+                        <div class="v-table-header">
+                            <div data-i18n="last_access_hdr">ÚLTIMO_ACCESO</div>
+                            <div data-i18n="shield_hdr">ESCUDO</div>
+                            <div data-i18n="id_hdr">IDENTIFICADOR</div>
+                            <div data-i18n="owner_hdr">PROPIETARIO</div>
+                            <div data-i18n="pass_hdr">CONTRASEÑA</div>
+                            <div data-i18n="notes_hdr">NOTAS</div>
+                            <div data-i18n="action_hdr">ACCIÓN</div>
+                        </div>
+                        <div class="v-table-body" id="vaultBody">
+                            <div class="flex-center" style="height:300px; opacity:0.6;">
+                                INICIALIZANDO ENLACE SEGURO...
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="vault-view-footer">
+                        <button class="v-btn-tactical success" onclick="triggerAction('sync')">
+                            <span class="icon">🔄</span>
+                            <span class="label" data-i18n="sync_nav"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+
+            <div id="opsOverlay" class="ops-overlay">
+                <div class="ops-content">
+                    <div>
+                        <small style="color:var(--primary)">SELECTED NODE</small>
+                        <h3 id="targetNodeName">NODE</h3>
+                    </div>
+                    <div class="ops-buttons">
+                        <button onclick="action('EDIT')">EDIT</button>
+                        <button onclick="action('DELETE')">DELETE</button>
+                        <button onclick="action('SHARE')">SHARE</button>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- TACTICAL TOAST CONTAINER -->
+            <div id="toastContainer" class="toast-container"></div>
+
+            <!-- TACTICAL SERVICE MODAL (REPLICA V1.1) -->
+            <div id="serviceModal" class="modal-overlay">
+                <div class="modal-content glass-card">
+                    <div class="card-header">
+                        <span class="mono" id="modalTitle"
+                            data-i18n="service_modal_title_new">INTEGRACIÓN_DE_NODO</span>
+                        <span class="close-btn" onclick="closeServiceModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="nodeId" value="0">
+
+                        <!-- 1. SERVICIO -->
+                        <div class="modal-section-card">
+                            <div class="form-group">
+                                <label class="mono" data-i18n="service_id_lbl">SERVICIO_IDENTIFICADOR</label>
+                                <input type="text" id="nodeService" data-i18n="[placeholder]placeholder_service"
+                                    placeholder="Ej: Google, AWS, Core_Database" class="tac-input"
+                                    oninput="validateForm()">
+                            </div>
+                        </div>
+
+                        <!-- 2. PROPIETARIO & PRIVACIDAD -->
+                        <div class="modal-section-card">
+                            <div class="form-row">
+                                <div class="form-group f-grow">
+                                    <label class="mono" data-i18n="owner_usr_lbl">PROPIETARIO (USR)</label>
+                                    <input type="text" id="nodeUser" class="tac-input disabled" readonly>
+                                </div>
+                                <div class="form-group f-grow">
+                                    <label class="mono" data-i18n="privacy_protocol_lbl">PRIVACIDAD_PROTOCOLO</label>
+                                    <select id="nodePrivate" class="tac-input">
+                                        <option value="0" data-i18n="public_team_opt">EQUIPO (PÚBLICO)</option>
+                                        <option value="1" data-i18n="personal_private_opt">PERSONAL (PRIVADO)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. LLAVE & GENERADOR -->
+                        <div class="modal-section-card">
+                            <div class="flex-between mb-5">
+                                <label class="mono tactical" data-i18n="access_key_lbl">LLAVE_DE_ACCESO
+                                    (SECRETO)</label>
+                                <button class="v-btn-tactical success small btn-gen-node" data-i18n="gen_pro_btn"
+                                    onclick="generateSecurePass()">GENERAR_PRO</button>
+                            </div>
+                            <div class="input-with-action">
+                                <input type="password" id="nodePass" placeholder="••••••••" class="tac-input"
+                                    oninput="onPassChange()">
+                                <button class="v-btn-icon" onclick="copyNodePass()" data-i18n="[title]copy"
+                                    title="Copiar">📋</button>
+                                <button class="v-btn-icon" onclick="togglePassVisibility()"
+                                    id="btnToggleReveal">👁️</button>
+                            </div>
+                        </div>
+
+                        <!-- 4. SEGURIDAD & NOTAS -->
+                        <div class="modal-section-card">
+                            <!-- 5. STRENGTH METER & HEURISTIC -->
+                            <div class="strength-container">
+                                <div class="flex-between">
+                                    <div class="strength-track f-grow mr-10">
+                                        <div id="strengthBar" class="strength-fill" style="width: 0%;"></div>
+                                    </div>
+                                    <button class="v-btn-icon" onclick="showHeuristics()"
+                                        data-i18n="[title]ai_analysis_feed" title="Análisis Heurístico">🛡️</button>
+                                </div>
+                                <div id="strengthLabel" class="mono strength-label-tactical"
+                                    data-i18n="security_pending_lbl">
+                                    SEGURIDAD: PENDIENTE_ENTRADA</div>
+                            </div>
+
+                            <div class="form-group mt-10">
+                                <label class="mono" data-i18n="field_notes_lbl">NOTAS_DE_CAMPO (CONTEXTO)</label>
+                                <textarea id="nodeNotes" data-i18n="[placeholder]placeholder_notes"
+                                    placeholder="Detalles de autorización, IP, Backup keys..." class="tac-input"
+                                    rows="2"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FOOTER -->
+                    <div class="modal-footer flex-center" style="gap: 1.5rem; margin-top: 1rem;">
+                        <button class="v-btn-tactical danger" onclick="closeServiceModal()" data-i18n="cancel_op_btn">
+                            CANCELAR_OPERACIÓN</button>
+                        <button class="v-btn-tactical" id="btnSaveNode" onclick="submitService()"
+                            data-i18n="encrypt_save_btn" disabled>ENCRIPTAR_Y_GUARDAR</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SESSIONS MONITOR MODAL -->
+            <div id="sessionsModal" class="modal-overlay">
+                <div class="modal-content glass-card audit-log">
+                    <div class="card-header">
+                        <span class="mono" data-i18n="monitor_modal_title">MONITOR_DE_SESIONES_ACTIVAS</span>
+                        <span class="close-btn" onclick="closeSessionsModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="tactical-table-wrapper">
+                            <table class="tac-table" id="sessionsTable">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="monitor_col_node">NODO</th>
+                                        <th data-i18n="monitor_col_ip">ORIGEN_IP</th>
+                                        <th data-i18n="monitor_col_started">INICIO</th>
+                                        <th data-i18n="monitor_col_status">ESTADO</th>
+                                        <th data-i18n="monitor_col_action">ACCIÓN</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sessionsTableBody">
+                                    <!-- Sessions will be injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI EXPLANATION MODAL (GHOST REPLICA) -->
+            <div id="aiExplanationModal" class="modal-overlay">
+                <div class="modal-content glass-card ai-explanation">
+                    <div class="card-header">
+                        <span class="mono" id="aiExpTitle">AI_INSIGHTS</span>
+                        <span class="close-btn" onclick="closeAIModal()">&times;</span>
+                    </div>
+                    <div class="modal-body" id="aiExpBody">
+                        <!-- Metrics and interpretations will be injected here -->
+                    </div>
+                    <div class="card-footer mono" style="text-align: center; font-size: 0.7rem; opacity: 0.6;">
+                        <i>DOBLE CLICK PARA DESCARTAR PROTOCOLO</i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- HEALTH DASHBOARD MODAL -->
+            <div id="healthModal" class="modal-overlay">
+                <div class="modal-content glass-card health-dashboard">
+                    <div class="card-header">
+                        <span class="mono">DIAGNÓSTICO_DE_SALUD_CRÍTICA</span>
+                        <span class="close-btn" onclick="closeHealthModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="health-grid">
+                            <div class="health-score-section">
+                                <div class="flex-center" style="height: 150px;">
+                                    <svg width="120" height="120" viewBox="0 0 100 100">
+                                        <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                                        <circle id="healthGaugeFill" class="gauge-fill" cx="50" cy="50" r="40"
+                                            style="stroke-dasharray: 251; stroke-dashoffset: 251; transform: rotate(-90deg); transform-origin: center;">
+                                        </circle>
+                                    </svg>
+                                    <div class="gauge-value" id="healthScoreVal">--%</div>
+                                </div>
+                                <div id="healthStatusText" class="mono" style="text-align: center; margin-top: 10px;">
+                                    ---</div>
+                            </div>
+                            <div class="health-ai-insights">
+                                <div class="terminal-box" id="healthAIConsole">
+                                    ⏳ INICIANDO PROTOCOLO_SALUD...
+                                </div>
+                            </div>
+                        </div>
+                        <div class="health-stats-row" id="healthStatsRow">
+                            <!-- Stats will be injected here -->
+                        </div>
+                        <div class="health-findings-list" id="healthFindings">
+                            <!-- Findings will be injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUDIT MODAL -->
+            <div id="auditModal" class="modal-overlay">
+                <div class="modal-content glass-card audit-log">
+                    <div class="card-header">
+                        <span class="mono" data-i18n="audit_modal_title">REGISTRO_CRÍTICO_DE_AUDITORÍA</span>
+                        <span class="close-btn" onclick="closeAuditModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <div class="tactical-table-wrapper">
+                            <table class="tac-table" id="auditTable">
+                                <thead>
+                                    <tr>
+                                        <th data-i18n="audit_col_time">FECHA_HORA</th>
+                                        <th data-i18n="audit_col_usr">USR</th>
+                                        <th data-i18n="audit_col_action">ACCIÓN</th>
+                                        <th data-i18n="audit_col_service">SERVICIO</th>
+                                        <th data-i18n="audit_col_details">DETALLES</th>
+                                        <th data-i18n="audit_col_status">ESTADO</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="auditTableBody">
+                                    <!-- Logs will be injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ULTRA-COMPACT SYNC PROGRESS CARD -->
+    <div id="syncMiniCard" class="sync-mini-card">
+        <div class="mini-card-header">
+            <span class="mono">SYNC_PROTOCOL</span>
+            <span id="syncPercent" class="mono">0%</span>
+        </div>
+        <div class="mini-progress-track">
+            <div id="syncProgressBar" class="mini-progress-fill"></div>
+        </div>
+        <div id="syncStatusText" class="mini-status-text mono">INICIALIZANDO...</div>
+    </div>
+
+    <!-- GHOST EXPLANATION DIALOG -->
+    <div id="ghostOverlay" class="ghost-overlay" onclick="closeGhostExplanation()">
+        <div class="ghost-card" onclick="event.stopPropagation()">
+            <div class="ghost-header">
+                <div class="ghost-title-row">
+                    <span class="ghost-glyph">◈</span>
+                    <span id="ghostTitle" class="ghost-title">INTEL_INTERPRETATION</span>
+                </div>
+                <span class="ghost-close" onclick="closeGhostExplanation()">&times;</span>
+            </div>
+            <div id="ghostContent" class="ghost-body">
+                <!-- Dynamic content injected here -->
+            </div>
+            <div class="ghost-footer">
+                <span class="mono">STATUS: DECODED</span>
+                <span class="ghost-line"></span>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- VISUAL CONNECTORS (Background Layer) -->
+    <svg class="visual-connectors">
+        <path class="connector-line pulse" d="M 260 120 L 300 120" />
+        <path class="connector-line pulse" d="M 260 250 L 300 250" />
+        <path class="connector-line pulse" d="M 260 400 L 300 400" />
+        <path class="connector-line" d="M 260 550 L 300 550" />
+    </svg>
+
+    <!-- LOAD BRIDGE BEFORE LOGIC -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="vault_v2_i18n.js"></script>
+    <script src="vault_v2_logic.js"></script>
+    <script>
+        // Trigger initialization once all scripts are loaded
+        window.onload = function () {
+            if (typeof initBridge === 'function') initBridge();
+            if (typeof setupGhostExplanations === 'function') setTimeout(setupGhostExplanations, 1000);
+        };
+    </script>
+
+</body>
+
+</html>

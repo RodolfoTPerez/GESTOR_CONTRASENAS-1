@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PassGuardian V2 | SECURE_ACCESS</title>
+    <link rel="stylesheet" href="index.css">
+    <style>
+        .login-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, rgba(0, 242, 255, 0.05) 0%, transparent 70%);
+        }
+
+        .biometric-ring {
+            position: relative;
+            width: 240px;
+            height: 240px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 2rem;
+        }
+
+        .ring {
+            position: absolute;
+            border: 2px solid var(--border);
+            border-radius: 50%;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .ring-1 {
+            width: 100%;
+            height: 100%;
+            border-style: dashed;
+            animation: rotate 20s linear infinite;
+        }
+
+        .ring-2 {
+            width: 85%;
+            height: 85%;
+            border-width: 1px;
+            border-color: var(--primary);
+            opacity: 0.3;
+            animation: rotate-rev 15s linear infinite;
+        }
+
+        .ring-3 {
+            width: 70%;
+            height: 70%;
+            border-style: double;
+            animation: rotate 10s linear infinite;
+        }
+
+        @keyframes rotate {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes rotate-rev {
+            from {
+                transform: rotate(360deg);
+            }
+
+            to {
+                transform: rotate(0deg);
+            }
+        }
+
+        .auth-icon {
+            font-size: 3rem;
+            color: var(--primary);
+            filter: drop-shadow(0 0 10px var(--primary-glow));
+        }
+
+        .input-group {
+            width: 300px;
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.5s ease;
+        }
+
+        .input-group.active {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .t-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border);
+            padding: 12px 15px;
+            color: var(--primary);
+            font-family: var(--font-mono);
+            outline: none;
+            margin-bottom: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .t-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .t-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: var(--bg-main);
+            border: none;
+            font-family: var(--font-mono);
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .t-btn:hover {
+            background: #fff;
+            box-shadow: 0 0 20px #fff;
+        }
+
+        .brand-header {
+            position: absolute;
+            top: 2rem;
+            text-align: center;
+        }
+
+        .status-footer {
+            position: absolute;
+            bottom: 2rem;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="scan-line"></div>
+
+    <div class="login-container">
+        <header class="brand-header">
+            <h1 class="mono glow-text" style="font-size: 2.5rem; letter-spacing: 5px;">PASS_GUARDIAN</h1>
+            <p class="mono" style="color: var(--text-dim); font-size: 0.8rem;">VERSION_2.0 // DEEP_ENCRYPTION_CORE</p>
+        </header>
+
+        <div class="biometric-ring" id="authTrigger" onclick="showInput()">
+            <div class="ring ring-1"></div>
+            <div class="ring ring-2"></div>
+            <div class="ring ring-3"></div>
+            <div class="auth-icon">🛡️</div>
+        </div>
+
+        <div class="input-group" id="loginFields">
+            <input type="text" class="t-input" placeholder="USUARIO_ACCESO" id="userInput"
+                style="margin-bottom: 0.5rem;">
+            <input type="password" class="t-input" placeholder="FRASE_MAESTRA" id="passInput">
+            <button class="t-btn mono" onclick="startAuth()">DESBLOQUEAR_BÓVEDA</button>
+            <p class="mono" id="statusMsg"
+                style="font-size: 0.6rem; margin-top: 1rem; color: var(--text-dim); text-align: center;">
+                IDENTIDAD_REQUERIDA</p>
+        </div>
+
+        <footer class="status-footer mono">
+            <span id="bridgeBadge" style="color: var(--danger);">NÚCLEO: DESCONECTADO</span>
+            <span>NV_SEGU: MÁXIMO</span>
+            <span>OS: VULTRAX_OS_V5</span>
+        </footer>
+    </div>
+
+    <!-- Cargar el bridge localmente -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script>
+        // Caja Negra: Captura errores globales para la terminal de Python
+        window.onerror = function (msg, url, line) {
+            console.error("[CRITICAL_JS] " + msg + " (Línea: " + line + ")");
+            return false;
+        };
+
+        let auth = null;
+        let bridgeReady = false;
+
+        function log(msg) { console.log("[JS_BRIDGE] " + msg); }
+
+        function initSecurityBridge() {
+            log("Buscando señal de QWebChannel (qt)...");
+
+            const q = window.qt || qt;
+            if (typeof q !== 'undefined' && q.webChannelTransport) {
+                log("¡Objeto 'qt' detectado! Iniciando Handshake...");
+                try {
+                    new QWebChannel(q.webChannelTransport, function (channel) {
+                        log("Procediendo a extraer el objeto 'auth'...");
+                        if (channel.objects.auth) {
+                            auth = channel.objects.auth;
+                            bridgeReady = true;
+                            log("¡CANAL 'AUTH' ESTABLECIDO!");
+
+                            const badge = document.getElementById('bridgeBadge');
+                            if (badge) {
+                                badge.innerText = "NÚCLEO: EN_LÍNEA";
+                                badge.style.color = "var(--success)";
+                            }
+                        } else {
+                            console.error("Error Interno de Bridge: 'auth' no encontrado.");
+                        }
+                    });
+                } catch (e) {
+                    console.error("Fallo al construir QWebChannel: " + e.message);
+                }
+            } else {
+                setTimeout(initSecurityBridge, 500);
+            }
+        }
+
+        initSecurityBridge();
+
+        function showInput() {
+            document.getElementById('loginFields').classList.add('active');
+            document.getElementById('authTrigger').style.transform = 'scale(0.8)';
+            document.getElementById('userInput').focus();
+        }
+
+        function startAuth() {
+            const user = document.getElementById('userInput').value;
+            const pass = document.getElementById('passInput').value;
+            const btn = document.querySelector('.t-btn');
+            const status = document.getElementById('statusMsg');
+
+            if (!user || !pass) {
+                status.innerText = "ERROR: CREDENCIALES_INCOMPLETAS";
+                status.style.color = "var(--danger)";
+                return;
+            }
+
+            if (!bridgeReady || !auth) {
+                status.innerText = "ERROR: AUTH_OFFLINE";
+                status.style.color = "var(--danger)";
+                return;
+            }
+
+            btn.innerHTML = 'VALIDANDO...';
+            btn.style.background = 'var(--secondary)';
+            status.innerText = "AUTENTICANDO_MODULO...";
+
+            try {
+                auth.validate_login(user, pass, (response) => {
+                    const res = JSON.parse(response);
+                    if (res.status === "success") {
+                        status.innerText = "ACCESO_CONCEDIDO";
+                        status.style.color = "var(--success)";
+                        setTimeout(() => { window.location.href = 'vault_v2.html'; }, 800);
+                    } else {
+                        btn.innerHTML = 'DESBLOQUEAR_BÓVEDA';
+                        btn.style.background = 'var(--primary)';
+                        status.innerText = "FALLO: " + (res.message || "CREDENCIALES_INVÁLIDAS");
+                        status.style.color = "var(--danger)";
+                    }
+                });
+            } catch (err) {
+                console.error("Fallo al contactar Auth Core: " + err.message);
+            }
+        }
+    </script>
+</body>
+
+</html>

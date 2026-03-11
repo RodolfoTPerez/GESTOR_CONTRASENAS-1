@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PASS GUARDIAN | Dashboard</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="dashboard.css">
+    <link rel="stylesheet" href="vault_v2.css">
+</head>
+
+<body>
+
+    <div class="app-container">
+        <!-- SVG Global Effects -->
+        <svg style="width:0; height:0; position:absolute;">
+            <defs>
+                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:var(--accent-1); stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:var(--accent-4); stop-opacity:1" />
+                </linearGradient>
+            </defs>
+        </svg>
+
+        <aside class="sidebar">
+            <div class="sidebar-logo">PASS GUARDIAN</div>
+
+            <div class="sidebar-nav">
+                <div class="nav-item active" onclick="switchView('dashboard')" data-i18n="DASHBOARD.NAV_DASHBOARD">
+                    Dashboard</div>
+                <div class="nav-item" onclick="switchView('vault')" data-i18n="DASHBOARD.NAV_VAULT">Vault</div>
+                <div class="nav-item" onclick="switchView('users')" data-i18n="DASHBOARD.NAV_USERS">System</div>
+                <div class="nav-item" onclick="switchView('activity')" data-i18n="DASHBOARD.NAV_ACTIVITY">Activity Log
+                </div>
+                <div class="nav-item" onclick="switchView('settings')" data-i18n="DASHBOARD.NAV_SETTINGS">Settings</div>
+            </div>
+
+            <div class="brightness-control">
+                <label>BRIGHTNESS_LEVEL</label>
+                <input type="range" id="brightness" min="0.6" max="1.6" step="0.01" value="1">
+            </div>
+        </aside>
+
+        <main class="main-viewport">
+
+            <div id="view-dashboard" class="view-pane">
+                <div class="header">
+                    <div class="company-title" id="globalCompanyTitle">...</div>
+                    <div class="widgets">
+                        <div class="widget" id="clock">00:00:00</div>
+                        <div class="widget" id="netStatusTop" data-i18n="DASHBOARD.STATUS_ONLINE">En Línea</div>
+                        <button class="toggle-theme" id="themeToggle" data-i18n="SETTINGS.LBL_THEME">Cambiar
+                            Tema</button>
+                    </div>
+                </div>
+
+                <!-- 5 TACTICAL CARDS (Bento Row) -->
+                <div class="top-stats-row">
+                    <div class="stat-card" id="cardAdmin">
+                        <div class="stat-header"><span class="icon">🏢</span> <small
+                                data-i18n="CARDS.ADMIN_SECURITY">ADMIN SECRETS</small></div>
+                        <div class="stat-value" id="valAdmin">0</div>
+                        <div class="stat-footer">
+                            <div class="bar primary"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="cardUser">
+                        <div class="stat-header"><span class="icon">👥</span> <small
+                                data-i18n="CARDS.USER_SECRETS">USERS SECRETS</small></div>
+                        <div class="stat-value" id="valUser">0</div>
+                        <div class="stat-footer">
+                            <div class="bar info"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="cardUsers">
+                        <div class="stat-header"><span class="icon">👤</span> <small data-i18n="CARDS.TOTAL_USERS">TOTAL
+                                USERS</small></div>
+                        <div class="stat-value" id="valUsers">0</div>
+                        <div class="stat-footer">
+                            <div class="bar secondary"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="cardSessions">
+                        <div class="stat-header"><span class="icon">⚡</span> <small
+                                data-i18n="CARDS.ACTIVE_SESSIONS">SESSIONS</small></div>
+                        <div class="stat-value" id="valSessions">0</div>
+                        <div class="stat-footer">
+                            <div class="bar ai"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="cardLogs">
+                        <div class="stat-header"><span class="icon">📜</span> <small
+                                data-i18n="DASHBOARD.AUDIT">LOGS</small></div>
+                        <div class="stat-value" id="valLogs">0</div>
+                        <div class="stat-footer">
+                            <div class="bar warning"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- GLOBAL SECURITY STATE (WIDE) -->
+                    <div class="glass-card security-wide-card">
+                        <div class="security-card-title mono" data-i18n="CARDS.GLOBAL_SECURITY">ESTADO GLOBAL DE
+                            SEGURIDAD</div>
+
+                        <div class="security-wide-content">
+                            <!-- Gauge Side -->
+                            <div class="security-gauge-side">
+                                <svg width="140" height="140" viewBox="0 0 100 100">
+                                    <circle class="gauge-bg" cx="50" cy="50" r="45" style="stroke-width: 4;"></circle>
+                                    <circle id="securityGauge" class="gauge-fill" cx="50" cy="50" r="45"
+                                        style="stroke-dasharray: 283; stroke-dashoffset: 283; transform: rotate(-90deg); transform-origin: center; stroke-width: 6;">
+                                    </circle>
+                                </svg>
+                                <div class="gauge-value" id="securityScoreVal"
+                                    style="font-size: 2.2rem; top: 50%; left: 50%; transform: translate(-50%, -50%); position: absolute;">
+                                    --</div>
+                            </div>
+
+                            <!-- Metrics Side -->
+                            <div class="security-metrics-side mono">
+                                <div class="metric-row">
+                                    <div class="metric-line">
+                                        <span class="label" data-i18n="CARDS.SYSTEM_STATUS">ESTADO DEL NÚCLEO</span>
+                                        <span class="value" id="coreHealthVal">--%</span>
+                                    </div>
+                                    <div class="mini-progress-track">
+                                        <div id="coreHealthBar" class="mini-progress-fill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+
+                                <div class="metric-row">
+                                    <div class="metric-line">
+                                        <span class="label" data-i18n="CARDS.AUTH_INTEGRITY">INTEGRIDAD DE ACCESO</span>
+                                        <span class="value" id="accessIntegrityVal">--%</span>
+                                    </div>
+                                    <div class="mini-progress-track">
+                                        <div id="accessIntegrityBar" class="mini-progress-fill" style="width: 0%"></div>
+                                    </div>
+                                </div>
+
+                                <div class="metric-line">
+                                    <span class="label" data-i18n="CARDS.ENCRYPTION">NIVEL DE CIFRADO</span>
+                                    <span class="value icon-tag"><span id="encryptionLevVal">AES-256 GCM</span>
+                                        🛡️</span>
+                                </div>
+
+                                <div class="metric-line">
+                                    <span class="label" data-i18n="CARDS.SYSTEM_LOAD">CARGA DE MEMORIA</span>
+                                    <span class="value icon-tag"><span id="memMbVal">-- MB</span> 📑</span>
+                                </div>
+
+                                <div class="metric-line">
+                                    <span class="label" data-i18n="CARDS.RISK_EXPOSURE">EXPOSICIÓN AL RIESGO</span>
+                                    <span class="value icon-tag"><span id="riskExpVal">--</span> 🛡️</span>
+                                </div>
+
+                                <div class="metric-line">
+                                    <span class="label" data-i18n="CARDS.AUDIT_PROTOCOL">PROTOCOLO DE AUDITORÍA</span>
+                                    <span class="value icon-tag"><span id="auditProtVal">OK</span> ✅</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="protection-footer mono">
+                            PROTECTION: REINFORCED
+                        </div>
+                    </div>
+
+                    <!-- SYSTEM HEALTH -->
+                    <div class="glass-card">
+                        <div class="card-header" ondblclick="openAIExplanation('HEALTH')">
+                            <span class="mono" data-i18n="CARDS.SYSTEM_HEALTH">SALUD_DEL_NÚCLEO</span>
+                        </div>
+                        <div class="metric-unit">
+                            <div class="flex-between">
+                                <small data-i18n="SETTINGS.LBL_DATA_MGMT">OPTIMIZACIÓN_DE_CARGA</small>
+                                <span id="memLoadVal">--%</span>
+                            </div>
+                            <div class="progress-track">
+                                <div id="memLoadBar" class="progress-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="metric-unit" style="margin-top: 1.5rem;">
+                            <div class="flex-between">
+                                <small data-i18n="CARDS.NETWORK">INTEGRIDAD_DE_RED</small>
+                                <span id="netStatusVal">VERIFICANDO...</span>
+                            </div>
+                            <div class="progress-track">
+                                <div id="netStatusBar" class="progress-fill success" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PASSWORD HEALTH: Reactor style -->
+                    <div class="glass-card">
+                        <div class="card-header">
+                            <span class="mono" data-i18n="CARDS.PASSWORD_HEALTH">REACTOR_DE_NODOS</span>
+                        </div>
+                        <div class="flex-center" style="height: 120px; position: relative;">
+                            <svg width="100" height="100" viewBox="0 0 100 100">
+                                <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                                <circle id="vaultGauge" class="gauge-fill" cx="50" cy="50" r="40"
+                                    style="stroke-dasharray: 251; stroke-dashoffset: 251; transform: rotate(-90deg); transform-origin: center; stroke: var(--accent-2);">
+                                </circle>
+                            </svg>
+                            <div style="position: absolute; font-size: 1.2rem; font-weight: 700;" id="vaultCountVal">--
+                            </div>
+                        </div>
+                        <div style="text-align: center; margin-top: 0.5rem;">
+                            <small class="mono" data-i18n="INFO_TILES.LBL_TOTAL">NODOS_PROTEGIDOS</small>
+                        </div>
+                    </div>
+
+                    <!-- AI GUARDIAN: Radar -->
+                    <div class="glass-card" style="grid-row: span 2;">
+                        <div class="card-header" ondblclick="openAIExplanation('RADAR')">
+                            <span class="mono" data-i18n="CARDS.AI_RADAR">AI_GUARDIAN_RADAR</span>
+                        </div>
+                        <div class="radar-container">
+                            <div class="radar-sweep"></div>
+                            <div class="radar-circle"></div>
+                            <div class="radar-circle" style="width: 66%; height: 66%;"></div>
+                            <div class="radar-circle" style="width: 33%; height: 33%;"></div>
+                            <div class="radar-crosshair-h"></div>
+                            <div class="radar-crosshair-v"></div>
+                            <div id="radarBlips"></div>
+                        </div>
+                        <div class="card-footer">
+                            <small class="mono" style="color: var(--accent-4)"
+                                data-i18n="CARDS.ENCRYPTED_SCAN_STATUS">ENCRYPTED_TOPOLOGY_SCAN_ACTIVE...</small>
+                        </div>
+                    </div>
+
+                    <!-- SECURITY WATCH -->
+                    <div class="glass-card" style="grid-column: span 1;">
+                        <div class="card-header">
+                            <span class="mono" data-i18n="CARDS.SECURITY_WATCH">SECURITY_MONITOR</span>
+                        </div>
+                        <div id="logStream" class="log-stream mono">
+                            <div class="log-entry" data-i18n="LOGS.HUD_INIT">INIT_HUD_SYSTEM...</div>
+                            <div class="log-entry" data-i18n="LOGS.CHANNEL_SECURE">SECURE_CHANNEL_NOMINAL</div>
+                        </div>
+                    </div>
+
+                    <!-- TACTICAL PROTOCOLS -->
+                    <div class="glass-card" style="grid-column: span 2;">
+                        <div class="card-header">
+                            <span class="mono" data-i18n="CARDS.INTERVENTION_PROTOCOLS">TACTICAL_PROTOCOLS</span>
+                        </div>
+                        <div class="flex-center" style="gap: 1.5rem; flex-wrap: wrap; padding: 10px;">
+                            <button class="v-btn-tactical" onclick="vaultBridge.import_vault()">
+                                <span class="mono" data-i18n="ACTIONS.IMPORT_DB">IMPORT_DATABASE</span>
+                            </button>
+                            <button class="v-btn-tactical" onclick="vaultBridge.export_vault()">
+                                <span class="mono" data-i18n="ACTIONS.EXPORT_DB">EXPORT_DATABASE</span>
+                            </button>
+                            <button class="v-btn-tactical success" onclick="openHealthDashboard()">
+                                <span class="mono" data-i18n="ACTIONS.CORE_HEALTH">CORE_HEALTH</span>
+                            </button>
+                            <button class="v-btn-tactical" onclick="openAuditModal()">
+                                <span class="mono" data-i18n="ACTIONS.SYSTEM_AUDIT">SYSTEM_AUDIT</span>
+                            </button>
+                            <button class="v-btn-tactical success" onclick="vaultBridge.trigger_ai_audit()">
+                                <span class="mono" data-i18n="ACTIONS.NEURAL_AUDIT">NEURAL_AUDIT</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-activity" class="view-pane" style="display:none;">
+                <div class="vault-container">
+                    <header class="vault-header">
+                        <div>
+                            <h1 data-i18n="DASHBOARD.NAV_ACTIVITY">REGISTRO_DE_ACTIVIDAD</h1>
+                        </div>
+                    </header>
+
+                    <div class="vault-action-bar">
+                        <div class="v-search-trending">
+                            <input type="text" placeholder="FILTRAR ACTIVIDAD..." id="logSearch" oninput="filterLogs()">
+                        </div>
+                        <div class="v-counters">
+                            <select id="logFilterType" class="tac-input small" onchange="filterLogs()"
+                                style="background: rgba(0,0,0,0.3); border: 1px solid var(--primary); color: white; border-radius: 4px; padding: 2px 10px;">
+                                <option value="ALL">TODOS</option>
+                                <option value="LOGIN">AUTENTICACIÓN</option>
+                                <option value="VAULT">BÓVEDA</option>
+                                <option value="ADMIN">ADMINISTRACIÓN</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <section class="vault-main">
+                        <table class="vault-table">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="last_access_hdr">TIMESTAMP</th>
+                                    <th data-i18n="owner_hdr">OPERATOR</th>
+                                    <th data-i18n="action_hdr">ACTION</th>
+                                    <th data-i18n="service_hdr">SERVICE</th>
+                                    <th data-i18n="details_hdr">DETAILS</th>
+                                    <th data-i18n="shield_hdr">STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activity-tbody">
+                                <!-- Logs will be injected here -->
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+            </div>
+
+            <div id="view-vault" class="view-pane" style="display:none;">
+                <div class="vault-container">
+                    <header class="vault-header">
+                        <div>
+                            <h1 id="companyNameDash">...</h1>
+                        </div>
+                    </header>
+
+                    <div class="vault-action-bar">
+                        <div class="v-search-trending">
+                            <input type="text" placeholder="BUSCAR REGISTROS..." id="vaultSearch"
+                                oninput="filterVault()" data-i18n-placeholder="DASHBOARD.PH_SEARCH">
+                        </div>
+
+                        <div class="v-counters">
+                            <span>ACTIVOS:<b id="count-total">-</b></span>
+                            <span class="v-separator"></span>
+                            <span>FILTRADOS:<b id="count-filtered">-</b></span>
+                        </div>
+
+                        <div class="v-tactical-icons">
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.import_vault()"
+                                data-i18n-title="DASHBOARD.IMPORT">📤</button>
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.export_vault()"
+                                data-i18n-title="DASHBOARD.EXPORT">📥</button>
+                            <button class="v-tac-icon" onclick="vaultBridge && vaultBridge.download_template()"
+                                data-i18n-title="DASHBOARD.WIZARD_BTN_DOWNLOAD">📄</button>
+                            <button class="v-tac-icon success" onclick="openServiceModal()"
+                                data-i18n-title="DASHBOARD.ADD">➕</button>
+                        </div>
+                    </div>
+
+                    <section class="vault-main">
+                        <div class="v-table-header">
+                            <div data-i18n="SESSIONS.COL_LAST">ÚLTIMO_ACCESO</div>
+                            <div data-i18n="DASHBOARD.COL_LEVEL">ESCUDO</div>
+                            <div data-i18n="DASHBOARD.COL_SVC">IDENTIFICADOR</div>
+                            <div data-i18n="DASHBOARD.COL_OWNER">PROPIETARIO</div>
+                            <div data-i18n="DASHBOARD.COL_PWD">CONTRASEÑA</div>
+                            <div data-i18n="SERVICE.LBL_NOTES">NOTAS</div>
+                            <div data-i18n="DASHBOARD.COL_ACTION">ACCIÓN</div>
+                        </div>
+                        <div class="v-table-body" id="vaultBody">
+                            <div class="flex-center" style="height:300px; opacity:0.6;">
+                                INICIALIZANDO ENLACE SEGURO...
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div id="view-users" class="view-pane" style="display:none;">
+                <div class="vault-container">
+                    <header class="vault-header">
+                        <h1 data-i18n="DASHBOARD.NAV_USERS">CONTROL_DE_ACCESO</h1>
+                    </header>
+                    <div id="users-table" class="tactical-table-wrapper">
+                        <table class="vault-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>USERNAME</th>
+                                    <th>ROLE</th>
+                                    <th>STATUS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-settings" class="view-pane" style="display:none;">
+                <div class="vault-container">
+                    <header class="vault-header">
+                        <h1 data-i18n="DASHBOARD.NAV_SETTINGS">CONFIGURACIÓN_HUD</h1>
+                    </header>
+                    <div class="glass-card" style="padding: 20px;">
+                        <h3 class="mono">OPCIONES_RESTRINGIDAS</h3>
+                        <p class="mono" style="opacity: 0.7;">El acceso al kernel requiere privilegio LEVEL_4.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="opsOverlay" class="ops-overlay">
+                <div class="ops-content">
+                    <div>
+                        <small style="color:var(--primary)">SELECTED NODE</small>
+                        <h3 id="targetNodeName">NODE</h3>
+                    </div>
+                    <div class="ops-buttons">
+                        <button onclick="action('EDIT')">EDIT</button>
+                        <button onclick="action('DELETE')">DELETE</button>
+                        <button onclick="action('SHARE')">SHARE</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+    </div>
+
+    <!-- TACTICAL TOAST CONTAINER -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- TACTICAL SERVICE MODAL (REPLICA V1.1) -->
+    <div id="serviceModal" class="modal-overlay">
+        <div class="modal-content glass-card">
+            <div class="card-header">
+                <span class="mono" id="modalTitle" data-i18n="service_modal_title_new">INTEGRACIÓN_DE_NODO</span>
+                <span class="close-btn" onclick="closeServiceModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="nodeId" value="0">
+
+                <!-- 1. SERVICIO -->
+                <div class="modal-section-card">
+                    <div class="form-group">
+                        <label class="mono" data-i18n="service_id_lbl">SERVICIO_IDENTIFICADOR</label>
+                        <input type="text" id="nodeService" data-i18n="[placeholder]placeholder_service"
+                            placeholder="Ej: Google, AWS, Core_Database" class="tac-input" oninput="validateForm()">
+                    </div>
+                </div>
+
+                <!-- 2. PROPIETARIO & PRIVACIDAD -->
+                <div class="modal-section-card">
+                    <div class="form-row">
+                        <div class="form-group f-grow">
+                            <label class="mono" data-i18n="owner_usr_lbl">PROPIETARIO (USR)</label>
+                            <input type="text" id="nodeUser" class="tac-input disabled" readonly>
+                        </div>
+                        <div class="form-group f-grow">
+                            <label class="mono" data-i18n="privacy_protocol_lbl">PRIVACIDAD_PROTOCOLO</label>
+                            <select id="nodePrivate" class="tac-input">
+                                <option value="0" data-i18n="public_team_opt">EQUIPO (PÚBLICO)</option>
+                                <option value="1" data-i18n="personal_private_opt">PERSONAL (PRIVADO)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. LLAVE & GENERADOR -->
+                <div class="modal-section-card">
+                    <div class="flex-between mb-5">
+                        <label class="mono tactical" data-i18n="access_key_lbl">LLAVE_DE_ACCESO (SECRETO)</label>
+                        <button class="v-btn-tactical success small btn-gen-node" onclick="generateSecurePass()"
+                            data-i18n="gen_pro_btn">GENERAR_PRO</button>
+                    </div>
+                    <div class="input-with-action">
+                        <input type="password" id="nodePass" placeholder="••••••••" class="tac-input"
+                            oninput="onPassChange()">
+                        <button class="v-btn-icon" onclick="copyNodePass()" title="Copiar">📋</button>
+                        <button class="v-btn-icon" onclick="togglePassVisibility()" id="btnToggleReveal">👁️</button>
+                    </div>
+                </div>
+
+                <!-- 4. SEGURIDAD & NOTAS -->
+                <div class="modal-section-card">
+                    <!-- 5. STRENGTH METER & HEURISTIC -->
+                    <div class="strength-container">
+                        <div class="flex-between">
+                            <div class="strength-track f-grow mr-10">
+                                <div id="strengthBar" class="strength-fill" style="width: 0%;"></div>
+                            </div>
+                            <button class="v-btn-icon" onclick="showHeuristics()"
+                                title="Análisis Heurístico">🛡️</button>
+                        </div>
+                        <div id="strengthLabel" class="mono strength-label-tactical" data-i18n="security_pending_lbl">
+                            SEGURIDAD: PENDIENTE_ENTRADA</div>
+                    </div>
+
+                    <div class="form-group mt-10">
+                        <label class="mono" data-i18n="field_notes_lbl">NOTAS_DE_CAMPO (CONTEXTO)</label>
+                        <textarea id="nodeNotes" data-i18n="[placeholder]placeholder_notes"
+                            placeholder="Detalles de autorización, IP, Backup keys..." class="tac-input"
+                            rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="modal-footer flex-center" style="gap: 1.5rem; margin-top: 1rem;">
+                <button class="v-btn-tactical danger" onclick="closeServiceModal()"
+                    data-i18n="cancel_op_btn">CANCELAR_OPERACIÓN</button>
+                <button class="v-btn-tactical" id="btnSaveNode" onclick="submitService()" disabled
+                    data-i18n="encrypt_save_btn">ENCRIPTAR_Y_GUARDAR</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI EXPLANATION MODAL (GHOST REPLICA) -->
+    <div id="aiExplanationModal" class="modal-overlay">
+        <div class="modal-content glass-card ai-explanation">
+            <div class="card-header">
+                <span class="mono" id="aiExpTitle">AI_INSIGHTS</span>
+                <span class="close-btn" onclick="closeAIModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="aiExpBody">
+                <!-- Metrics and interpretations will be injected here -->
+            </div>
+            <div class="card-footer mono" style="text-align: center; font-size: 0.7rem; opacity: 0.6;">
+                <i>DOBLE CLICK PARA DESCARTAR PROTOCOLO</i>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEALTH DASHBOARD MODAL -->
+    <div id="healthModal" class="modal-overlay">
+        <div class="modal-content glass-card health-dashboard">
+            <div class="card-header">
+                <span class="mono">DIAGNÓSTICO_DE_SALUD_CRÍTICA</span>
+                <span class="close-btn" onclick="closeHealthModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="health-grid">
+                    <div class="health-score-section">
+                        <div class="flex-center" style="height: 150px;">
+                            <svg width="120" height="120" viewBox="0 0 100 100">
+                                <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                                <circle id="healthGaugeFill" class="gauge-fill" cx="50" cy="50" r="40"
+                                    style="stroke-dasharray: 251; stroke-dashoffset: 251; transform: rotate(-90deg); transform-origin: center;">
+                                </circle>
+                            </svg>
+                            <div class="gauge-value" id="healthScoreVal">--%</div>
+                        </div>
+                        <div id="healthStatusText" class="mono" style="text-align: center; margin-top: 10px;">---</div>
+                    </div>
+                    <div class="health-ai-insights">
+                        <div class="terminal-box" id="healthAIConsole">
+                            ⏳ INICIANDO PROTOCOLO_SALUD...
+                        </div>
+                    </div>
+                </div>
+                <div class="health-stats-row" id="healthStatsRow">
+                    <!-- Stats will be injected here -->
+                </div>
+                <div class="health-findings-list" id="healthFindings">
+                    <!-- Findings will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SESSIONS MONITOR MODAL -->
+    <div id="sessionsModal" class="modal-overlay">
+        <div class="modal-content glass-card audit-log">
+            <div class="card-header">
+                <span class="mono" data-i18n="monitor_modal_title">MONITOR_DE_SESIONES_ACTIVAS</span>
+                <span class="close-btn" onclick="closeSessionsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="tactical-table-wrapper">
+                    <table class="tac-table" id="sessionsTable">
+                        <thead>
+                            <tr>
+                                <th data-i18n="monitor_col_node">NODO</th>
+                                <th data-i18n="monitor_col_ip">ORIGEN_IP</th>
+                                <th data-i18n="monitor_col_started">INICIO</th>
+                                <th data-i18n="monitor_col_status">ESTADO</th>
+                                <th data-i18n="monitor_col_action">ACCIÓN</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sessionsTableBody">
+                            <!-- Sessions will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUDIT MODAL -->
+    <div id="auditModal" class="modal-overlay">
+        <div class="modal-content glass-card audit-log">
+            <div class="card-header">
+                <span class="mono" data-i18n="audit_modal_title">REGISTRO_CRÍTICO_DE_AUDITORÍA</span>
+                <span class="close-btn" onclick="closeAuditModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="tactical-table-wrapper">
+                    <table class="tac-table" id="auditTable">
+                        <thead>
+                            <tr>
+                                <th data-i18n="audit_col_time">FECHA_HORA</th>
+                                <th data-i18n="audit_col_usr">USR</th>
+                                <th data-i18n="audit_col_action">ACCIÓN</th>
+                                <th data-i18n="audit_col_service">SERVICIO</th>
+                                <th data-i18n="audit_col_details">DETALLES</th>
+                                <th data-i18n="audit_col_status">ESTADO</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <!-- Logs will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="vault_v2_i18n.js"></script>
+    <script>
+        let sysBridge = null;
+        let vaultBridge = null;
+        let api = null;
+        let records = [];
+        let selectedRecord = null;
+        let selectedRow = null;
+
+        window.currentLang = 'ES'; // Fallback
+        function T(key, fallback) {
+            if (typeof i18nDict !== 'undefined' && i18nDict[key]) {
+                return i18nDict[key][window.currentLang] || fallback;
+            }
+            return fallback;
+        }
+
+        function initBridge() {
+            if (typeof qt !== 'undefined') {
+                new QWebChannel(qt.webChannelTransport, function (channel) {
+                    sysBridge = channel.objects.system;
+                    vaultBridge = channel.objects.handler; // Aliased vault handler
+                    api = channel.objects.api;
+
+                    // Real-time synchronization (Tactical Push)
+                    sysBridge.telemetryUpdated.connect(function (res) {
+                        updateUIData(JSON.parse(res));
+                    });
+
+                    // Vault Sync
+                    vaultBridge.recordsChanged.connect(function () {
+                        loadRecords();
+                        refreshLogs();
+                    });
+
+                    // Theme Sync: Initial alignment
+                    if (vaultBridge.get_theme_config) {
+                        vaultBridge.get_theme_config((config) => {
+                            const c = JSON.parse(config);
+                            const root = document.documentElement;
+                            root.style.setProperty('--primary', c.primary_color);
+                            root.style.setProperty('--secondary', c.secondary_color);
+                            root.style.setProperty('--global-brightness', c.brightness);
+
+                            // Tactical parity: Update background and text if provided
+                            if (c.bg_color) root.style.setProperty('--glass-bg', c.bg_color + '77');
+                            if (c.text_color) root.style.setProperty('--text-main', c.text_color);
+
+                            console.log("HUD: Theme synchronized with Python core.");
+                        });
+                    }
+
+                    if (vaultBridge.get_instance_name) {
+                        vaultBridge.get_instance_name((name) => {
+                            const n = (name && name.trim() !== "") ? name : "SECURE VAULT";
+                            const el1 = document.getElementById('companyNameDash');
+                            const el2 = document.getElementById('globalCompanyTitle');
+                            if (el1) el1.innerText = n;
+                            if (el2) el2.innerText = n;
+                        });
+                    }
+
+                    refreshStats();
+                    loadRecords();
+
+                    // [AUTO-STARTUP] Always land on Overview
+                    switchView('dashboard');
+                });
+            } else {
+                setTimeout(initBridge, 100);
+            }
+        }
+
+        function refreshStats() {
+            if (sysBridge) {
+                sysBridge.get_stats((res) => {
+                    updateUIData(JSON.parse(res));
+                });
+                refreshLogs();
+            }
+        }
+
+        function refreshLogs() {
+            if (sysBridge && sysBridge.get_logs) {
+                sysBridge.get_logs((data) => {
+                    const logs = JSON.parse(data);
+                    const logStream = document.getElementById('logStream');
+                    if (logStream && logs.length > 0) {
+                        logStream.innerHTML = '';
+                        logs.forEach(l => {
+                            const entry = document.createElement('div');
+                            entry.className = 'log-entry';
+                            entry.innerText = `[${l.time}] ${l.event}: ${l.status}`;
+                            logStream.appendChild(entry);
+                        });
+                    }
+                });
+            }
+        }
+
+        function updateUIData(s) {
+            // 1. Security Score (Large Gauge)
+            const scoreVal = document.getElementById('securityScoreVal');
+            // Update security card
+            const score = s.security_score || 0;
+            const gauge = document.getElementById('securityGauge');
+            if (gauge) {
+                const offset = 283 - (283 * score / 100);
+                gauge.style.strokeDashoffset = offset;
+            }
+            if (document.getElementById('securityScoreVal')) document.getElementById('securityScoreVal').innerText = score + "%";
+
+            // Detailed Security Card (Wide)
+            if (document.getElementById('coreHealthVal')) document.getElementById('coreHealthVal').innerText = (s.core_health || score) + '%';
+            if (document.getElementById('coreHealthBar')) document.getElementById('coreHealthBar').style.width = (s.core_health || score) + '%';
+
+            if (document.getElementById('accessIntegrityVal')) document.getElementById('accessIntegrityVal').innerText = (s.access_integrity || 100) + '%';
+            if (document.getElementById('accessIntegrityBar')) document.getElementById('accessIntegrityBar').style.width = (s.access_integrity || 100) + '%';
+
+            if (document.getElementById('encryptionLevVal')) document.getElementById('encryptionLevVal').innerText = s.encryption_level || 'AES-256 GCM';
+            if (document.getElementById('memMbVal')) document.getElementById('memMbVal').innerText = s.memory_mb || '-- MB';
+            if (document.getElementById('riskExpVal')) document.getElementById('riskExpVal').innerText = s.risk_exposure || 'LOW';
+            if (document.getElementById('auditProtVal')) document.getElementById('auditProtVal').innerText = s.audit_protocol || 'OK';
+
+            // Stability
+            if (document.getElementById('stabilityStatus')) document.getElementById('stabilityStatus').innerText = s.system_stability || 'ESTABILIDAD_NOMINAL';
+
+            // 2. Vault Count (Reactor Gauge)
+            const vVal = document.getElementById('vaultCountVal');
+            const vGauge = document.getElementById('vaultGauge');
+            if (vVal) vVal.innerText = s.vault_count;
+            if (vGauge) {
+                // Assuming 50 nodes as 100% capacity for visual context
+                const vPercent = Math.min(s.vault_count / 50, 1) * 100;
+                const offset = 251 - (251 * vPercent / 100);
+                vGauge.style.strokeDashoffset = offset;
+            }
+
+            // 3. System Metrics
+            const memVal = document.getElementById('memLoadVal');
+            const memBar = document.getElementById('memLoadBar');
+            if (memVal) memVal.innerText = (s.cpu_usage || 45) + "%";
+            if (memBar) memBar.style.width = (s.cpu_usage || 45) + "%";
+
+            const netVal = document.getElementById('netStatusVal');
+            const netBar = document.getElementById('netStatusBar');
+            const netStatus = s.network_status ? "ENLACE_CIFRADO" : "DESCONECTADO";
+            if (netVal) netVal.innerText = netStatus;
+            if (netBar) {
+                netBar.style.width = s.network_status ? "100%" : "30%";
+                netBar.className = s.network_status ? "progress-fill success" : "progress-fill danger";
+            }
+
+            // 5. Advanced Tactical Metrics (Top Row)
+            if (s.admin_secrets !== undefined) document.getElementById('valAdmin').innerText = s.admin_secrets;
+            if (s.user_secrets !== undefined) document.getElementById('valUser').innerText = s.user_secrets;
+            if (s.total_users !== undefined) document.getElementById('valUsers').innerText = s.total_users;
+            if (s.active_sessions !== undefined) document.getElementById('valSessions').innerText = s.active_sessions;
+            if (s.log_count !== undefined) document.getElementById('valLogs').innerText = s.log_count;
+
+            // 6. Tactical Log Stream
+            const logStream = document.getElementById('logStream');
+            if (logStream && s.security_score !== lastScore) {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                const time = new Date().toLocaleTimeString().split(' ')[0];
+                entry.innerText = `[${time}] ACT_PUNTUACIÓN_SEG: ${s.security_score}%`;
+                logStream.prepend(entry);
+                if (logStream.children.length > 5) logStream.lastElementChild.remove();
+                lastScore = s.security_score;
+            }
+
+            // 5. Radar Blips (Tactical Threats)
+            renderRadarBlips(s.threats_detected || 0);
+
+            // Log real-time sync for tactical feedback
+            console.log("HUD_SYNC: Signal received. Score: " + s.security_score + "%");
+        }
+
+        function renderRadarBlips(count) {
+            const container = document.getElementById('radarBlips');
+            if (!container) return;
+            container.innerHTML = '';
+
+            for (let i = 0; i < count; i++) {
+                const blip = document.createElement('div');
+                blip.className = 'radar-blip';
+                const x = Math.random() * 80 + 10;
+                const y = Math.random() * 80 + 10;
+                blip.style.left = x + '%';
+                blip.style.top = y + '%';
+                container.appendChild(blip);
+            }
+        }
+
+        let lastScore = 0;
+
+        /* ================================
+           VAULT PROCEDURES
+        ================================ */
+
+        function loadRecords() {
+            if (vaultBridge && vaultBridge.get_vault_records) {
+                vaultBridge.get_vault_records((data) => {
+                    records = JSON.parse(data);
+                    document.getElementById('count-total').innerText = records.length;
+                    renderVault(records);
+                });
+            }
+        }
+
+        function renderVault(data) {
+            const body = document.getElementById('vaultBody');
+            if (!body) return;
+            body.innerHTML = '';
+
+            data.forEach(rec => {
+                const row = document.createElement('div');
+                row.className = 'v-row';
+                const sClass = (rec.strength || 'weak').toLowerCase();
+
+                row.innerHTML = `
+                    <div class="v-date">${rec.last_access}</div>
+                    <div class="v-shield ${sClass}">🛡️</div>
+                    <div class="v-id">${rec.identifier}</div>
+                    <div class="v-owner">${rec.owner || 'UNKNOWN'}</div>
+                    <div class="v-pass" id="pass-${rec.id}">••••••••</div>
+                    <div class="v-notes" title="${rec.notes}">${rec.notes}</div>
+                    <div class="v-actions">
+                        <button class="v-icon-btn" title="REVEAL" onclick="event.stopPropagation(); viewNode('${rec.id}')">👁️</button>
+                        <button class="v-icon-btn" title="COPY" onclick="event.stopPropagation(); copyNode('${rec.id}')">📋</button>
+                    </div>
+                `;
+
+                row.onclick = () => selectRow(row, rec);
+                row.ondblclick = () => openOps(rec);
+                body.appendChild(row);
+            });
+
+            // Update filtered count visually
+            const filtCount = document.getElementById('count-filtered');
+            if (filtCount) filtCount.innerText = data.length;
+        }
+
+        function selectRow(el, rec) {
+            if (selectedRow) selectedRow.classList.remove('selected');
+            el.classList.add('selected');
+            selectedRow = el;
+            selectedRecord = rec;
+        }
+
+        function openOps(rec) {
+            document.getElementById('targetNodeName').innerText = rec.identifier;
+            document.getElementById('opsOverlay').style.display = 'block';
+        }
+
+        function closeOps() {
+            document.getElementById('opsOverlay').style.display = 'none';
+        }
+
+        function filterVault() {
+            const q = document.getElementById('vaultSearch').value.toLowerCase();
+            if (!q) {
+                renderVault(records);
+                return;
+            }
+            const filtered = records.filter(r =>
+                (r.identifier && r.identifier.toLowerCase().includes(q)) ||
+                (r.notes && r.notes.toLowerCase().includes(q)) ||
+                (r.owner && r.owner.toLowerCase().includes(q))
+            );
+            renderVault(filtered);
+        }
+
+        function action(type) {
+            if (!selectedRecord) return;
+            if (type === 'DELETE') {
+                const nodeName = selectedRecord.identifier || "NODE";
+                if (confirm(`TERMINATE NODE [${nodeName}]?`)) {
+                    vaultBridge.delete_record(selectedRecord.id, (ok) => {
+                        if (ok) {
+                            showToast("SISTEMA_BÓVEDA", "COMPONENTE_PURGADO_CON_ÉXITO", "success");
+                        } else {
+                            showToast("ERROR_BÓVEDA", "ERROR_EN_PROTOCOLO_DE_PURGA", "danger");
+                        }
+                        closeOps();
+                    });
+                }
+            } else if (type === 'EDIT') {
+                openServiceModal(selectedRecord.id);
+                closeOps();
+            }
+        }
+
+        function copyNode(id) {
+            if (vaultBridge && vaultBridge.copy_secret) {
+                vaultBridge.copy_secret(id, (ok) => {
+                    if (ok) {
+                        showToast("SINCRONIZACIÓN", "SECRETO_PIPED_A_PORTAPAPELES", "success");
+                    } else {
+                        showToast("ERROR_CRÍTICO", "FALLO_DE_COPIA: NO_AUTORIZADO", "danger");
+                    }
+                });
+            }
+        }
+
+        function viewNode(id) {
+            const passEl = document.getElementById(`pass-${id}`);
+            if (!passEl) return;
+
+            // Toggle back to masked if already revealed
+            if (passEl.classList.contains('revealed')) {
+                passEl.innerText = '••••••••';
+                passEl.classList.remove('revealed');
+                return;
+            }
+
+            if (vaultBridge && vaultBridge.view_secret) {
+                vaultBridge.view_secret(id, (res) => {
+                    const data = JSON.parse(res);
+                    if (data.status === 'success') {
+                        passEl.innerText = data.secret;
+                        passEl.classList.add('revealed');
+                        showToast("SEGURIDAD", "DECODIFICACIÓN_NOMINAL_ACTIVA", "warning");
+
+                        // AUTO-HIDE after 3 seconds
+                        setTimeout(() => {
+                            if (passEl.classList.contains('revealed')) {
+                                passEl.innerText = '••••••••';
+                                passEl.classList.remove('revealed');
+                                showToast("SEGURIDAD", "SECRETO_RE-ENMASCARADO", "success");
+                            }
+                        }, 3000);
+                    } else {
+                        showToast("ACCESO_DENEGADO", "FALLO_EN_PROTOCOLO_REVELADO", "danger");
+                    }
+                });
+            }
+        }
+
+        function showToast(title, msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const iconMap = {
+                'success': '🛡️',
+                'warning': '⚠️',
+                'danger': '🔥'
+            };
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <div class="toast-icon">${iconMap[type]}</div>
+                <div class="toast-content">
+                    <div class="toast-title">${title}</div>
+                    <div class="toast-msg">${msg}</div>
+                </div>
+            `;
+
+            container.appendChild(toast);
+
+            // Auto-hide after 4s
+            setTimeout(() => {
+                toast.classList.add('hiding');
+                setTimeout(() => toast.remove(), 400);
+            }, 4000);
+        }
+
+        function switchView(viewId) {
+            document.querySelectorAll('.view-pane').forEach(p => p.style.display = 'none');
+            const target = document.getElementById('view-' + viewId);
+            if (target) {
+                target.style.display = 'flex';
+                if (viewId === 'vault') loadRecords();
+                if (viewId === 'activity') loadActivityLogs();
+                if (viewId === 'users') loadUsers();
+            }
+
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            // Use event.currentTarget if called from onclick event
+            if (window.event && window.event.currentTarget) {
+                window.event.currentTarget.classList.add('active');
+            } else {
+                // Find nav item by text if no event
+                const items = document.querySelectorAll('.nav-item');
+                items.forEach(item => {
+                    if (item.innerText.toLowerCase().includes(viewId)) item.classList.add('active');
+                });
+            }
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const clockEl = document.getElementById("clock");
+            if (clockEl) clockEl.innerText = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        const brightInp = document.getElementById("brightness");
+        if (brightInp) {
+            brightInp.addEventListener("input", function () {
+                document.documentElement.style.setProperty("--global-brightness", this.value);
+            });
+        }
+
+        const themeBtn = document.getElementById("themeToggle");
+        if (themeBtn) {
+            themeBtn.addEventListener("click", function () {
+                const body = document.body;
+                let themeId = "vultrax";
+
+                if (body.classList.contains("aura")) {
+                    body.classList.remove("aura");
+                    body.classList.add("nebula");
+                    themeId = "nebula";
+                } else if (body.classList.contains("nebula")) {
+                    body.classList.remove("nebula");
+                    themeId = "vultrax";
+                } else {
+                    body.classList.add("aura");
+                    themeId = "aura";
+                }
+
+                // NOTIFY PYTHON CORE
+                if (vaultBridge && vaultBridge.set_active_theme) {
+                    vaultBridge.set_active_theme(themeId);
+                    showToast("SINCRONIZACIÓN", `MATRIZ_${themeId.toUpperCase()}_ACTIVA`, "success");
+                }
+            });
+        }
+
+        /* ================================
+           SERVICE MODAL LOGIC (1:1 REPLICA)
+        ================================ */
+        function openServiceModal(id = 0) {
+            const modal = document.getElementById('serviceModal');
+            const title = document.getElementById('modalTitle');
+            const nodeId = document.getElementById('nodeId');
+
+            // Reset form
+            document.getElementById('nodeService').value = '';
+            document.getElementById('nodePass').value = '';
+            document.getElementById('nodeNotes').value = '';
+            document.getElementById('nodePrivate').value = "0";
+            document.getElementById('nodePass').type = 'password';
+            document.getElementById('btnToggleReveal').innerText = '👁️';
+            nodeId.value = id;
+
+            // Update Strength Color/Label
+            updateStrengthVisuals(0, "DÉBIL / VULNERABLE", "weak");
+
+            // Set current user as owner
+            if (vaultBridge && vaultBridge.get_current_user) {
+                vaultBridge.get_current_user((user) => {
+                    document.getElementById('nodeUser').value = user;
+                });
+            }
+
+            if (id !== 0) {
+                title.innerText = "MODIFICACIÓN_DE_NODO [ID:" + id + "]";
+                if (vaultBridge && vaultBridge.prepare_edit) {
+                    vaultBridge.prepare_edit(id.toString(), (res) => {
+                        const data = JSON.parse(res);
+                        if (data.id) {
+                            document.getElementById('nodeService').value = data.service;
+                            document.getElementById('nodeUser').value = data.username;
+                            document.getElementById('nodePass').value = data.secret;
+                            document.getElementById('nodeNotes').value = data.notes;
+                            document.getElementById('nodePrivate').value = data.is_private.toString();
+                            onPassChange();
+                        }
+                    });
+                }
+            } else {
+                title.innerText = "INTEGRACIÓN_DE_NODO_NUEVO";
+            }
+
+            modal.style.display = 'flex';
+            validateForm();
+        }
+
+        function closeServiceModal() {
+            document.getElementById('serviceModal').style.display = 'none';
+        }
+
+        function onPassChange() {
+            const pwd = document.getElementById('nodePass').value;
+            if (vaultBridge && vaultBridge.calculate_strength) {
+                vaultBridge.calculate_strength(pwd, (res) => {
+                    const data = JSON.parse(res);
+                    updateStrengthVisuals(data.score, data.name, data.level);
+                });
+            }
+            validateForm();
+        }
+
+        function updateStrengthVisuals(score, name, level) {
+            const bar = document.getElementById('strengthBar');
+            const label = document.getElementById('strengthLabel');
+            bar.style.width = score + '%';
+            label.innerText = "SEGURIDAD: " + name;
+
+            // USE CSS VARIABLES - ZERO HARDCODE
+            const varName = {
+                "weak": "var(--danger)",
+                "medium": "var(--warning)",
+                "strong": "var(--primary)",
+                "secure": "var(--success)"
+            }[level] || "var(--danger)";
+
+            bar.style.background = varName;
+            label.style.color = varName;
+            bar.style.boxShadow = `0 0 10px ${varName}`;
+        }
+
+        function generateSecurePass() {
+            if (vaultBridge && vaultBridge.generate_password_advanced) {
+                vaultBridge.generate_password_advanced((pwd) => {
+                    const passInp = document.getElementById('nodePass');
+                    passInp.value = pwd;
+                    passInp.type = 'text';
+                    document.getElementById('btnToggleReveal').innerText = '🙈';
+                    onPassChange();
+                });
+            }
+        }
+
+        function copyNodePass() {
+            const text = document.getElementById('nodePass').value;
+            if (text) {
+                const dummy = document.createElement("textarea");
+                document.body.appendChild(dummy);
+                dummy.value = text;
+                dummy.select();
+                document.execCommand("copy");
+                document.body.removeChild(dummy);
+                showToast("SEGURIDAD", "LLAVE_PIPED_AL_PORTAPAPELES", "success");
+            }
+        }
+
+        function showHeuristics() {
+            const pwd = document.getElementById('nodePass').value;
+            if (!pwd) {
+                showToast("GUARDÍAN_IA", "DEBE_INGRESAR_SECRETO_PARA_ANÁLISIS", "warning");
+                return;
+            }
+            if (vaultBridge && vaultBridge.get_heuristic_analysis) {
+                vaultBridge.get_heuristic_analysis(pwd, (res) => {
+                    const data = JSON.parse(res);
+                    const msg = `ENTROPÍA: ${data.entropy} bits | TIEMPO: ${data.crack_time}`;
+                    showToast("GUARDÍAN_IA", msg, "success");
+                    // Log the full findings to the UI console if available
+                    console.log("HEURISTICS:", data.findings);
+                });
+            }
+        }
+
+        /* ================================
+           AI EXPLANATION (GHOST) LOGIC
+        ================================ */
+        function openAIExplanation(cardType) {
+            if (sysBridge && sysBridge.get_ai_explanation) {
+                sysBridge.get_ai_explanation(cardType, (res) => {
+                    const data = JSON.parse(res);
+                    const body = document.getElementById('aiExpBody');
+                    document.getElementById('aiExpTitle').innerText = data.title;
+                    body.innerHTML = '';
+
+                    data.metrics.forEach(m => {
+                        const row = document.createElement('div');
+                        row.className = 'ai-metric-row';
+                        row.innerHTML = `
+                            <div class="flex-between">
+                                <span class="m-key">${m.key}</span>
+                                <span class="m-val" style="color: var(--${m.color})">${m.value}</span>
+                            </div>
+                            <div class="m-interp" style="color: var(--${m.color})">➤ ${m.interp}</div>
+                        `;
+                        body.appendChild(row);
+                    });
+
+                    document.getElementById('aiExplanationModal').style.display = 'flex';
+                });
+            }
+        }
+
+        function closeAIModal() {
+            document.getElementById('aiExplanationModal').style.display = 'none';
+        }
+
+        // Close on double click inside the modal (ghost style)
+        document.getElementById('aiExplanationModal').ondblclick = closeAIModal;
+
+        /* ================================
+           HEALTH DASHBOARD LOGIC
+        ================================ */
+        function openHealthDashboard() {
+            if (sysBridge && sysBridge.get_health_data) {
+                sysBridge.get_health_data((res) => {
+                    const data = JSON.parse(res);
+
+                    // 1. Gauge
+                    const offset = 251 - (251 * data.score / 100);
+                    document.getElementById('healthGaugeFill').style.strokeDashoffset = offset;
+                    document.getElementById('healthScoreVal').innerText = data.score + "%";
+
+                    const stTxt = document.getElementById('healthStatusText');
+                    stTxt.innerText = data.status.toUpperCase();
+                    stTxt.style.color = data.score < 40 ? 'var(--danger)' : data.score < 75 ? 'var(--warning)' : 'var(--success)';
+
+                    // 2. Stats
+                    const statsRow = document.getElementById('healthStatsRow');
+                    statsRow.innerHTML = `
+                        <div class="h-stat-card">
+                            <small>TOTAL_VAULT</small>
+                            <div class="val">${data.stats.total}</div>
+                        </div>
+                        <div class="h-stat-card">
+                            <small>USR_TOTAL</small>
+                            <div class="val">${data.stats.user_total}</div>
+                        </div>
+                        <div class="h-stat-card danger">
+                            <small>VULNERABLES</small>
+                            <div class="val">${data.stats.user_weak}</div>
+                        </div>
+                    `;
+
+                    // 3. Findings
+                    const findingsCont = document.getElementById('healthFindings');
+                    findingsCont.innerHTML = '<h4>DETALLE_DE_HALLAZGOS_DE_SEGURIDAD</h4>';
+                    data.findings.forEach(f => {
+                        const card = document.createElement('div');
+                        card.className = `finding-card ${f.type}`;
+                        card.innerHTML = `
+                            <div class="f-title">${f.title}</div>
+                            <div class="f-desc">${f.desc}</div>
+                        `;
+                        findingsCont.appendChild(card);
+                    });
+
+                    document.getElementById('healthModal').style.display = 'flex';
+
+                    // Simulate AI Console
+                    const console = document.getElementById('healthAIConsole');
+                    console.innerHTML = '⏳ INICIANDO PROTOCOLO_SALUD...';
+                    setTimeout(() => {
+                        console.innerHTML += '<br>> Escaneando vectores de ataque...';
+                        setTimeout(() => {
+                            console.innerHTML += '<br>> Analizando entropía de claves...';
+                            setTimeout(() => {
+                                console.innerHTML = `🤖 GUARDIAN_AI ANALYSIS:<br>El núcleo se encuentra en estado ${data.status.toUpperCase()}. Se recomienda rotación de firmas en nodos vulnerables.`;
+                            }, 800);
+                        }, 500);
+                    }, 400);
+                });
+            }
+        }
+
+        function closeHealthModal() {
+            document.getElementById('healthModal').style.display = 'none';
+        }
+
+        /* ================================
+           AUDIT MODAL LOGIC
+        ================================ */
+        function openAuditModal() {
+            if (sysBridge && sysBridge.get_detailed_audit) {
+                sysBridge.get_detailed_audit((res) => {
+                    const logs = JSON.parse(res);
+                    const body = document.getElementById('auditTableBody');
+                    body.innerHTML = '';
+
+                    logs.forEach(l => {
+                        const row = document.createElement('tr');
+                        const sClass = l.status === 'SUCCESS' ? 'success' : 'danger';
+                        const aClass = l.action.includes('PURGA') ? 'danger bold' : '';
+
+                        row.innerHTML = `
+                            <td class="mono">${l.time}</td>
+                            <td>${l.user}</td>
+                            <td class="${aClass}">${l.action}</td>
+                            <td>${l.service}</td>
+                            <td>${l.details}</td>
+                            <td class="${sClass}">${l.status}</td>
+                        `;
+                        body.appendChild(row);
+                    });
+
+                    document.getElementById('auditModal').style.display = 'flex';
+                });
+            }
+        }
+
+        function closeAuditModal() {
+            document.getElementById('auditModal').style.display = 'none';
+        }
+
+        function validateForm() {
+            const service = document.getElementById('nodeService').value.trim();
+            const pass = document.getElementById('nodePass').value.trim();
+            const btn = document.getElementById('btnSaveNode');
+            if (btn) btn.disabled = !(service.length >= 3 && pass.length > 0);
+        }
+
+        function submitService() {
+            const data = {
+                id: document.getElementById('nodeId').value,
+                service: document.getElementById('nodeService').value.trim(),
+                username: document.getElementById('nodeUser').value.trim(),
+                secret: document.getElementById('nodePass').value.trim(),
+                notes: document.getElementById('nodeNotes').value.trim(),
+                is_private: document.getElementById('nodePrivate').value
+            };
+
+            if (vaultBridge && vaultBridge.save_record) {
+                vaultBridge.save_record(JSON.stringify(data));
+                showToast("SISTEMA_VAULT", "PROTOCOLO_DE_PERSISTENCIA_NOMINAL", "success");
+                closeServiceModal();
+            }
+        }
+
+        function togglePassVisibility() {
+            const passInp = document.getElementById('nodePass');
+            const btn = document.getElementById('btnToggleReveal');
+            if (passInp.type === 'password') {
+                passInp.type = 'text';
+                btn.innerText = '🙈';
+            } else {
+                passInp.type = 'password';
+                btn.innerText = '👁️';
+            }
+        }
+
+        /* ================================
+           ACTIVITY LOG LOGIC
+        ================================ */
+        let allLogs = [];
+        function loadActivityLogs() {
+            if (sysBridge && sysBridge.get_detailed_audit) {
+                sysBridge.get_detailed_audit((res) => {
+                    allLogs = JSON.parse(res);
+                    renderLogs(allLogs);
+                });
+            }
+        }
+
+        function renderLogs(logs) {
+            const tbody = document.getElementById('activity-tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            logs.forEach(l => {
+                const row = document.createElement('tr');
+                const sClass = l.status === 'SUCCESS' ? 'success' : 'danger';
+
+                row.innerHTML = `
+                    <td class="mono">${l.time}</td>
+                    <td>${l.user}</td>
+                    <td>${l.action}</td>
+                    <td>${l.service}</td>
+                    <td>${l.details}</td>
+                    <td class="${sClass}">${l.status}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function filterLogs() {
+            const query = document.getElementById('logSearch').value.toLowerCase();
+            const type = document.getElementById('logFilterType').value;
+
+            const filtered = allLogs.filter(l => {
+                const matchQuery = l.action.toLowerCase().includes(query) ||
+                    l.user.toLowerCase().includes(query) ||
+                    l.details.toLowerCase().includes(query);
+                const matchType = type === 'ALL' || l.action.includes(type);
+                return matchQuery && matchType;
+            });
+            renderLogs(filtered);
+        }
+
+        /* ================================
+           USER MANAGEMENT LOGIC
+        ================================ */
+        function loadUsers() {
+            if (sysBridge && sysBridge.get_users) {
+                sysBridge.get_users((res) => {
+                    const users = JSON.parse(res);
+                    renderUsers(users);
+                });
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            users.forEach(u => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${u.id}</td>
+                    <td class="mono">${u.username}</td>
+                    <td>${u.role}</td>
+                    <td class="${u.active ? 'success' : 'danger'}">${u.active ? 'ACTIVO' : 'INACTIVO'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        /* ================================
+           SESSIONS MONITOR MODAL LOGIC 
+        ================================ */
+        function openSessionsModal() {
+            if (vaultBridge && vaultBridge.get_active_sessions_bridge) {
+                vaultBridge.get_active_sessions_bridge((res) => {
+                    const sessions = JSON.parse(res);
+                    const body = document.getElementById('sessionsTableBody');
+                    if (!body) return;
+                    body.innerHTML = '';
+
+                    if (sessions.length === 0) {
+                        body.innerHTML = '<tr><td colspan="5" style="text-align:center; opacity:0.5;" class="mono">' + T('no_active_sessions', 'NO HAY SESIONES ACTIVAS') + '</td></tr>';
+                    } else {
+                        sessions.forEach(s => {
+                            const row = document.createElement('tr');
+                            const isActive = s.status === 'ACTIVE';
+                            const sClass = isActive ? 'success' : 'warning';
+                            const statusText = isActive ? T('session_active', 'ACTIVA') : T('session_stale', 'INACTIVA_STALE');
+
+                            row.innerHTML = `
+                                <td class="mono">${s.node || 'UNKNOWN_NODE'}</td>
+                                <td class="mono">${s.ip || 'LOCAL_LOOPBACK'}</td>
+                                <td>${s.start_time || '--:--:--'}</td>
+                                <td class="${sClass}">${statusText}</td>
+                                <td>
+                                    <button class="v-btn-tactical danger small" onclick="killSession('${s.session_id}')">
+                                        ${T('btn_kill', 'TERMINAR')}
+                                    </button>
+                                </td>
+                            `;
+                            body.appendChild(row);
+                        });
+                    }
+
+                    const modal = document.getElementById('sessionsModal');
+                    if (modal) modal.style.display = 'flex';
+                });
+            } else {
+                console.error("VAULT_BRIDGE NO DISPONIBLE");
+            }
+        }
+
+        function closeSessionsModal() {
+            const modal = document.getElementById('sessionsModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        function killSession(id) {
+            if (confirm(T('confirm_kill_session', '¿Terminar esta sesión remotamente?'))) {
+                if (vaultBridge && vaultBridge.disconnect_session_bridge) {
+                    vaultBridge.disconnect_session_bridge(id);
+                    setTimeout(openSessionsModal, 1000);
+                }
+            }
+        }
+
+        /* ================================
+           HEALTH & AI EXPLANATION MODAL LOGIC
+        ================================ */
+        function renderHealthDashboardDisplay(res) {
+            const data = JSON.parse(res);
+            const score = Math.max(0, Math.min(100, data.score || 0));
+            const offset = 251 - (251 * score / 100);
+
+            let gaugeFill = document.getElementById('healthGaugeFill');
+            if (gaugeFill) gaugeFill.style.strokeDashoffset = offset;
+
+            let scoreVal = document.getElementById('healthScoreVal');
+            if (scoreVal) scoreVal.innerText = score + "%";
+
+            const stTxt = document.getElementById('healthStatusText');
+            if (stTxt) {
+                stTxt.innerText = (data.status || 'DESCONOCIDO').toUpperCase();
+                stTxt.style.color = score < 50 ? 'var(--danger)' : score < 80 ? 'var(--warning)' : 'var(--success)';
+            }
+
+            const statsRow = document.getElementById('healthStatsRow');
+            if (statsRow) {
+                const total = data.stats ? (data.stats.total || 0) : 0;
+                const userTotal = data.stats ? (data.stats.user_total || 0) : 0;
+                const isWeak = data.stats ? (data.stats.user_weak || 0) : 0;
+                statsRow.innerHTML = `
+                    <div class="h-stat-card">
+                        <small>TOTAL_VAULT</small>
+                        <div class="val">${total}</div>
+                    </div>
+                    <div class="h-stat-card">
+                        <small>USR_TOTAL</small>
+                        <div class="val">${userTotal}</div>
+                    </div>
+                    <div class="h-stat-card ${isWeak > 0 ? 'danger' : ''}">
+                        <small>VULNERABLES</small>
+                        <div class="val">${isWeak}</div>
+                    </div>
+                `;
+            }
+
+            const findingsCont = document.getElementById('healthFindings');
+            if (findingsCont) {
+                findingsCont.innerHTML = '<h4>DETALLE_DE_HALLAZGOS_DE_SEGURIDAD</h4>';
+                if (data.findings && data.findings.length > 0) {
+                    data.findings.forEach(f => {
+                        const card = document.createElement('div');
+                        card.className = `finding-card ${f.type || 'info'}`;
+                        card.innerHTML = `
+                            <div class="f-title">${f.title || 'Alerta'}</div>
+                            <div class="f-desc">${f.desc || ''}</div>
+                        `;
+                        findingsCont.appendChild(card);
+                    });
+                } else {
+                    findingsCont.innerHTML += '<p style="opacity:0.6; padding: 10px;" class="mono">SISTEMA ÓPTIMO. CERO BRECHAS DETECTADAS.</p>';
+                }
+            }
+
+            const healthModal = document.getElementById('healthModal');
+            if (healthModal) healthModal.style.display = 'flex';
+
+            const consoleEl = document.getElementById('healthAIConsole');
+            if (consoleEl) {
+                consoleEl.innerHTML = '⏳ INICIANDO PROTOCOLO_SALUD...';
+                setTimeout(() => {
+                    consoleEl.innerHTML += '<br>> Escaneando vectores de ataque...';
+                    setTimeout(() => {
+                        consoleEl.innerHTML += '<br>> Analizando entropía de claves...';
+                        setTimeout(() => {
+                            consoleEl.innerHTML = `🤖 GUARDIAN_AI ANALYSIS:<br>El núcleo se encuentra en estado ${(data.status || 'NOMINAL').toUpperCase()}. Se recomienda rotación de firmas en nodos vulnerables.`;
+                        }, 800);
+                    }, 500);
+                }, 400);
+            }
+        }
+
+        function openHealthDashboard() {
+            if (sysBridge && sysBridge.get_health_data) {
+                sysBridge.get_health_data((res) => {
+                    renderHealthDashboardDisplay(res);
+                });
+            }
+        }
+
+        function renderIntelligenceReport(res) {
+            renderHealthDashboardDisplay(res);
+        }
+
+        function closeHealthModal() {
+            const healthModal = document.getElementById('healthModal');
+            if (healthModal) healthModal.style.display = 'none';
+        }
+
+        window.onload = initBridge;
+    </script>
+
+</body>
+
+</html>
